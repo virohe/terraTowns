@@ -284,9 +284,13 @@ public final class HamletPiece {
     private int buryCap = MAX_BURY;
     private int stiltCap = MAX_STILT;
 
-    private HamletPiece(ServerLevel level) {
+    private HamletPiece(ServerLevel level, BlockPos origin) {
         this.level = level;
-        this.random = level.getRandom();
+        // Seeded from the world seed and the site, not level.getRandom(): the server random is
+        // reseeded every boot and shared with everything else that ticks, so one world seed
+        // built different hamlets on every run (TT-208: the harness failed ~2 runs in 5 on
+        // identical code). Now a seed always gets the same hamlets, as with vanilla structures.
+        this.random = RandomSource.create(level.getSeed() ^ origin.asLong() * 0x9E3779B97F4A7C15L);
         this.templates = level.getStructureManager();
     }
 
@@ -295,7 +299,7 @@ public final class HamletPiece {
      * centre (feet on solid ground).
      */
     public static BlockPos place(ServerLevel level, BlockPos origin) {
-        return new HamletPiece(level).build(origin);
+        return new HamletPiece(level, origin).build(origin);
     }
 
     private BlockPos build(BlockPos origin) {
@@ -1445,7 +1449,7 @@ public final class HamletPiece {
 
     /** Dev harness: run the tree clear around {@code footprints} (see JobAudit#treeFelling). */
     static void fellTreesForAudit(ServerLevel level, List<int[]> footprints) {
-        HamletPiece h = new HamletPiece(level);
+        HamletPiece h = new HamletPiece(level, BlockPos.ZERO); // tree felling draws no randomness
         h.placedFootprints = footprints;
         h.clearTreesAround(footprints);
     }
@@ -1892,10 +1896,14 @@ public final class HamletPiece {
                 int base = groundTop(minX + dx, minZ + dz);
                 for (int y = base + 1; y <= base + height; y++) {
                     BlockState s = level.getBlockState(p.set(minX + dx, y, minZ + dz));
+                    // Nothing the hamlet fells counts while it fells trees: a wooded coast otherwise
+                    // failed every house plot (0 houses). "Fells" means isTreePart, not just logs:
+                    // a huge mushroom (stem + caps) is felled too but was still counted, and since
+                    // vanilla places those depending on which neighbour chunk generated first, the
+                    // same seed scored the same plot differently from run to run (TT-208).
                     if (!s.isAir() && !s.canBeReplaced() && !isTerrain(s) && s.getFluidState().isEmpty()
-                            && !(CLEAR_HAMLET_TREES && (s.is(BlockTags.LOGS) || s.is(BlockTags.LEAVES)))) {
-                        count++; // trees don't count while the hamlet fells its trees anyway: a
-                                 // wooded coast otherwise failed every house plot (0 houses)
+                            && !(CLEAR_HAMLET_TREES && (s.is(BlockTags.LEAVES) || isTreePart(placedFootprints, p, s)))) {
+                        count++;
                     }
                 }
             }

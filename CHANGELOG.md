@@ -5,6 +5,15 @@ Entries before 0.4.8 were reconstructed on 2026-09-27 from DESIGN.md and session
 project had no version control until then. Snapshots of 0.3.13 (partial) and 0.4.0+ are in
 `releases/terra-towns/`.
 
+## 0.4.10 — 2026-10-02
+- **Same seed, same hamlets.** Hamlet layouts were drawn from the server's per-boot random, so
+  one world seed built different hamlets every time it was created; they are now seeded from
+  the world seed and the site (TT-208). (`HamletPiece`)
+- **Huge mushrooms no longer push buildings off a plot.** Plot scoring counted their stems and
+  caps as obstructions although the hamlet fells them like trees; vanilla places them depending
+  on chunk-generation order, which also made layouts vary between runs.
+- The headless harness now gives the same result on every run.
+
 ## 0.4.9 — 2026-10-01
 - **Depends on Terra Continental** (`terra_continental`), the worldgen mod's new name; it was
   `terra_incognita` up to 0.7.4. Install Terra Continental 0.8.0 or later alongside this version.
