@@ -47,6 +47,16 @@ public final class GymDesk {
 
     /** A desk was just placed at {@code pos}. Called from the desk block, server side. */
     public static void onPlaced(ServerLevel level, BlockPos pos, SettlementData settlement) {
+        // A player's placement runs inside its packet task, and vanilla defers registering the
+        // desk's POI until that task ends; queued after it, this runs once the POI exists. Run
+        // straight away, it found no POI to hand over and crashed the server (2026-10-02 playtest).
+        level.getServer().execute(() -> placedNow(level, pos, settlement));
+    }
+
+    private static void placedNow(ServerLevel level, BlockPos pos, SettlementData settlement) {
+        if (!isDesk(level, pos)) {
+            return; // gone again before the queue got to it
+        }
         BlockPos current = settlement.deskPos();
         if (current != null && !current.equals(pos) && isDesk(level, current)) {
             occupy(level, pos); // a second desk: inert
@@ -118,6 +128,10 @@ public final class GymDesk {
         if (desk == null) {
             return;
         }
+        PoiManager pois = level.getPoiManager();
+        if (!pois.existsAtPosition(TerraTownsRegistries.GYM_LEADERS_DESK_POI_KEY, desk)) {
+            return; // not registered yet (see onPlaced); releasing it would throw. Next scan.
+        }
         Optional<GlobalPos> site = leader.getBrain().getMemory(MemoryModuleType.JOB_SITE);
         boolean holdsIt = site.isPresent() && site.get().pos().equals(desk)
                 && leader.getVillagerData().getProfession() == TerraTownsRegistries.GYM_LEADER_PROFESSION.get();
@@ -127,7 +141,6 @@ public final class GymDesk {
         if (site.isPresent()) {
             leader.releasePoi(MemoryModuleType.JOB_SITE); // whatever it held before
         }
-        PoiManager pois = level.getPoiManager();
         if (pois.getFreeTickets(desk) == 0) {
             pois.release(desk); // reserved for the leader (or held by a villager just stood down)
         }

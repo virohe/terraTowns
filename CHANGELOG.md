@@ -5,6 +5,19 @@ Entries before 0.4.8 were reconstructed on 2026-09-27 from DESIGN.md and session
 project had no version control until then. Snapshots of 0.3.13 (partial) and 0.4.0+ are in
 `releases/terra-towns/`.
 
+## 0.4.14 — 2026-10-02
+- **Moving the Gym Leader's Desk no longer crashes the game** (playtest). A player's placement
+  runs as a queued task, and vanilla registers the desk's workstation only after that task ends;
+  handing the desk to a bound leader during placement tried to release a workstation that didn't
+  exist yet, then the next settlement scan did the same and stopped the server. The hand-over now
+  waits its turn, and never touches a workstation that isn't registered. (`GymDesk`)
+- **No more seeds and flowers on the ground when you spawn** (playtest: an allium field). Every
+  block a hamlet changed made vanilla re-check its neighbours, and plants that could no longer
+  stand dropped as items. The build now does that check itself without drops: plants still go,
+  their items don't. Same look, no litter. (`HamletPiece.set`)
+- Harness: `gymDesk` now moves a desk the way a player does; `droppedItems` (items lying around
+  a freshly built hamlet) must be 0, in the harness and on the real-pack rig. Both failed on 0.4.13.
+
 ## 0.4.13 — 2026-10-02
 - **Guards wear armour you give them.** Drop a helmet, chestplate, leggings or boots next to a
   Guard and it picks the piece up and puts it on, swapping out anything worse (armour points,

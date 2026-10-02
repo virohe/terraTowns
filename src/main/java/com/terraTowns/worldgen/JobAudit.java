@@ -385,7 +385,28 @@ public final class JobAudit {
         boolean spareTakesOver = p3.equals(s.deskPos()) && holds(v, p3)
                 && v.getVillagerData().getProfession() == TerraTownsRegistries.GYM_LEADER_PROFESSION.get();
 
+        // A player moving the desk (2026-10-02 crash): placement runs inside the packet task, and
+        // vanilla defers registering the new desk's POI until that task ends. So onPlaced, and a
+        // settlement scan before the deferred task, see a desk block with no POI under it.
         level.setBlock(p3, Blocks.AIR.defaultBlockState(), 3);
+        BlockPos p4 = deskSpot(level, base.offset(3, 0, 3));
+        level.setBlock(p4, TerraTownsRegistries.GYM_LEADERS_DESK.get().defaultBlockState(), 3);
+        pois.remove(p4); // not registered yet, as during the player's placement
+        boolean survivesUnregistered;
+        try {
+            com.terraTowns.settlement.GymDesk.onPlaced(level, p4, s);
+            com.terraTowns.settlement.GymDesk.tick(level, s);
+            survivesUnregistered = true;
+        } catch (RuntimeException e) {
+            survivesUnregistered = false;
+        }
+        pois.add(p4, level.registryAccess().registryOrThrow(net.minecraft.core.registries.Registries.POINT_OF_INTEREST_TYPE)
+                .getHolderOrThrow(TerraTownsRegistries.GYM_LEADERS_DESK_POI_KEY)); // the deferred task runs
+        com.terraTowns.settlement.GymDesk.tick(level, s);
+        boolean playerMoveGoesToLeader = survivesUnregistered && p4.equals(s.deskPos()) && holds(v, p4)
+                && pois.getFreeTickets(p4) == 0;
+
+        level.setBlock(p4, Blocks.AIR.defaultBlockState(), 3);
         v.discard();
         w.discard();
         s.setGymLeaderId(null);
@@ -401,6 +422,8 @@ public final class JobAudit {
         verdict.put("usurperStoodDown", usurperStoodDown);
         verdict.put("beatenLeaderLocked", locked);
         verdict.put("spareDeskTakesOverForLeader", spareTakesOver);
+        verdict.put("playerMoveSurvivesUnregisteredPoi", survivesUnregistered);
+        verdict.put("playerMoveGoesToLeader", playerMoveGoesToLeader);
         out.put("verdict", verdict);
         return out;
     }

@@ -232,6 +232,21 @@ public final class HamletPiece {
     private static final int MAX_VILLAGERS = 10;
 
     /** Blocks a top-block path may be laid over (grass/dirt family); anything else is skipped. */
+    /**
+     * Every block the build writes: clients told, no neighbour updates, no vanilla shape pass,
+     * no drops. A new player spawned into dozens of seeds and flowers on the ground, worst in
+     * flower biomes (2026-10-02 playtest; the harness counted 30 across 8 plains hamlets): each
+     * block the build changed made vanilla re-shape its neighbours, and a plant that could no
+     * longer stand was destroyed WITH its drops. SUPPRESS_DROPS alone doesn't help, because
+     * vanilla strips it before that neighbour pass. So KNOWN_SHAPE skips vanilla's pass, and
+     * {@link #set} runs the same pass itself without drops. Templates honour SUPPRESS_DROPS in
+     * their own edge pass.
+     */
+    private static final int BUILD_FLAGS = Block.UPDATE_CLIENTS | Block.UPDATE_KNOWN_SHAPE
+            | Block.UPDATE_SUPPRESS_DROPS;
+    /** How far a no-drop shape update may chain (a tall flower's top over its bottom, …). */
+    private static final int SHAPE_UPDATE_DEPTH = 4;
+
     private static final BlockState[] PATHABLE = {
             Blocks.GRASS_BLOCK.defaultBlockState(), Blocks.DIRT.defaultBlockState(),
             Blocks.COARSE_DIRT.defaultBlockState(), Blocks.PODZOL.defaultBlockState(),
@@ -448,7 +463,8 @@ public final class HamletPiece {
         spawnAnimals(penSpots);
         TerraTowns.LOGGER.info("Placed spawn hamlet at {} ({} houses, {} farms, {} villagers, {} plots scored)",
                 hamletCenter, houses, placedFarms, villagers, candidates.size());
-        HamletAudit.hamlet(hamletCenter, houses, placedFarms, villagers, candidates.size(), lighting);
+        HamletAudit.hamlet(level, hamletCenter, PLOT_RADIUS + ROUTE_REACH, houses, placedFarms, villagers,
+                candidates.size(), lighting);
         return spawn;
     }
 
@@ -932,7 +948,7 @@ public final class HamletPiece {
                 .setRotation(rotation)
                 .addProcessor(JigsawReplacementProcessor.INSTANCE);
         template.placeInWorld(level, new BlockPos(originX, baseY, originZ), BlockPos.ZERO, settings,
-                random, Block.UPDATE_CLIENTS);
+                random, BUILD_FLAGS);
 
         // Underpin: pour foundation under the FLOOR COURSE only. A column whose lowest solid
         // block sits above the floor course is an overhang -- a roof eave, an awning -- and must
@@ -2133,6 +2149,26 @@ public final class HamletPiece {
     }
 
     private void set(BlockPos pos, BlockState state) {
-        level.setBlock(pos, state, Block.UPDATE_CLIENTS);
+        set(pos, state, SHAPE_UPDATE_DEPTH);
+    }
+
+    /**
+     * Write a block, then do vanilla's neighbour shape pass by hand, minus the drops: each
+     * neighbour re-shapes against the new block (fences reconnect, a plant with nothing under it
+     * becomes air) and its own change passes on, a few steps deep. See {@link #BUILD_FLAGS}.
+     */
+    private void set(BlockPos pos, BlockState state, int depth) {
+        level.setBlock(pos, state, BUILD_FLAGS);
+        if (depth == 0) {
+            return;
+        }
+        for (Direction d : Direction.values()) {
+            BlockPos n = pos.relative(d);
+            BlockState was = level.getBlockState(n);
+            BlockState now = was.updateShape(d.getOpposite(), state, level, n, pos);
+            if (now != was) {
+                set(n, now, depth - 1);
+            }
+        }
     }
 }

@@ -200,12 +200,17 @@ public final class HamletAudit {
     }
 
     /** Record one finished hamlet. */
-    static void hamlet(BlockPos center, int houses, int farms, int villagers, int plotsScored,
-                       Map<String, Object> lighting) {
+    static void hamlet(ServerLevel level, BlockPos center, int buildRadius, int houses, int farms, int villagers,
+                       int plotsScored, Map<String, Object> lighting) {
         if (!ENABLED) {
             return;
         }
         Map<String, Object> row = new LinkedHashMap<>();
+        // Items lying around a hamlet that was just built: grass seeds and flowers knocked off
+        // when the build cut their ground away. A player spawned into dozens (2026-10-02).
+        row.put("droppedItems", level.getEntitiesOfClass(net.minecraft.world.entity.item.ItemEntity.class,
+                net.minecraft.world.phys.AABB.ofSize(net.minecraft.world.phys.Vec3.atCenterOf(center),
+                        2.0 * buildRadius, 64, 2.0 * buildRadius)).size());
         row.put("x", center.getX());
         row.put("y", center.getY());
         row.put("z", center.getZ());
@@ -327,6 +332,7 @@ public final class HamletAudit {
         s.put("openInteriorBumps", sumInt("openInteriorBumps"));
         s.put("doorsWrong", PIECES.stream()
                 .filter(r -> Boolean.FALSE.equals(r.get("doorOk"))).count());
+        s.put("droppedItems", HAMLETS.stream().mapToInt(h -> (Integer) h.get("droppedItems")).sum());
         s.put("approachesWithoutPath", PIECES.stream()
                 .filter(r -> Boolean.FALSE.equals(r.get("pathAtApproach"))).count());
         s.put("rejects", REJECTS);
