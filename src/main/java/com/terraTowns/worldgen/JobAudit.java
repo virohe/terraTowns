@@ -130,6 +130,7 @@ public final class JobAudit {
             rows.add(row);
         }
 
+        report.put("guard", guard(level, manager));
         manager.setDirty();
         report.put("settlements", rows);
         report.put("summary", verdict(rows));
@@ -807,6 +808,80 @@ public final class JobAudit {
      *
      * @return how many villagers were in range at all.
      */
+    /**
+     * The Guard job end to end (TT-201): it can be staffed; its workstation is the vanilla
+     * target block; a room with a target qualifies as a Guard Post while a room with only a
+     * bell no longer does; and a villager practising the Guard profession in a village is
+     * appointed. Runs after the per-settlement stages, so gym and buildings are already done.
+     * Looks the profession up by id, so before it existed this reported missing, not a crash.
+     */
+    private static Map<String, Object> guard(ServerLevel level, SettlementManager manager) {
+        Map<String, Object> verdict = new LinkedHashMap<>();
+        java.util.Optional<VillagerProfession> profession = net.minecraft.core.registries.BuiltInRegistries.VILLAGER_PROFESSION
+                .getOptional(ResourceLocation.fromNamespaceAndPath("terra_towns", "guard"));
+        verdict.put("professionRegistered", profession.isPresent());
+        verdict.put("staffable", SettlementJob.GUARD.isStaffable());
+        verdict.put("workstationIsTarget", JobBoard.workstations(level, SettlementJob.GUARD).stream()
+                .anyMatch(stack -> stack.is(net.minecraft.world.item.Items.TARGET)));
+        java.util.Set<net.minecraft.world.level.block.Block> post =
+                com.terraTowns.structure.BuildingSurvey.requiredBlocks(level, BuildingCategory.BARRACKS_GUARD_POST);
+        verdict.put("postNeedsTarget", post.contains(Blocks.TARGET));
+        verdict.put("bellAloneIsNotAPost", !post.contains(Blocks.BELL));
+
+        // Villagers never claim a post on their own: Guards are handed out to villages only.
+        verdict.put("notVanillaClaimable", level.registryAccess().registryOrThrow(net.minecraft.core.registries.Registries.POINT_OF_INTEREST_TYPE)
+                .getHolder(TerraTownsRegistries.GUARD_POST_POI_KEY)
+                .map(h -> !h.is(net.minecraft.tags.PoiTypeTags.ACQUIRABLE_JOB_SITE)).orElse(false));
+
+        boolean keptOutOfHamlet = false;
+        boolean recruitedInVillage = false;
+        boolean holdsThePost = false;
+        boolean appointed = false;
+        if (profession.isPresent()) {
+            SettlementData s = manager.all().iterator().next();
+            SettlementTier tierBefore = s.tier();
+            BlockPos ground = level.getHeightmapPos(net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING,
+                    s.center().offset(3, 0, 3));
+            level.setBlock(ground, Blocks.TARGET.defaultBlockState(), 3);
+            double r = s.registrationRadius();
+            AABB box = AABB.ofSize(Vec3.atCenterOf(s.center()), 2.0 * r, 2.0 * r, 2.0 * r);
+            Villager idle = null;
+            for (Villager v : level.getEntitiesOfClass(Villager.class, box)) {
+                if (!v.isBaby() && com.terraTowns.settlement.SettlementPromotion.isResident(v)
+                        && !v.getUUID().equals(s.gymLeaderId()) && !s.isEmployed(v.getUUID())) {
+                    idle = v;
+                    break;
+                }
+            }
+            if (idle != null) {
+                idle.setVillagerData(idle.getVillagerData().setProfession(VillagerProfession.NONE));
+                idle.refreshBrain(level);
+
+                s.setTier(SettlementTier.HAMLET);
+                keptOutOfHamlet = com.terraTowns.settlement.GuardRecruitment.recruit(level, s) == 0
+                        && idle.getVillagerData().getProfession() == VillagerProfession.NONE;
+
+                s.setTier(SettlementTier.VILLAGE);
+                com.terraTowns.settlement.GuardRecruitment.recruit(level, s);
+                recruitedInVillage = idle.getVillagerData().getProfession() == profession.get();
+                holdsThePost = idle.getBrain().getMemory(net.minecraft.world.entity.ai.memory.MemoryModuleType.JOB_SITE)
+                        .map(g -> g.pos().equals(ground)).orElse(false);
+                JobBoard.refresh(level, s);
+                JobBoard.restaffUnchecked(level, s);
+                appointed = idle.getUUID().equals(s.jobHolder(SettlementJob.GUARD));
+            }
+            s.setTier(tierBefore);
+            JobBoard.refresh(level, s);
+        }
+        verdict.put("keptOutOfHamlet", keptOutOfHamlet);
+        verdict.put("recruitedInVillage", recruitedInVillage);
+        verdict.put("holdsThePost", holdsThePost);
+        verdict.put("guardAppointed", appointed);
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("verdict", verdict);
+        return out;
+    }
+
     private static int giveOneVillagerATrade(ServerLevel level, SettlementData settlement) {
         double r = settlement.registrationRadius();
         AABB box = AABB.ofSize(Vec3.atCenterOf(settlement.center()), 2.0 * r, 2.0 * r, 2.0 * r);

@@ -5,6 +5,19 @@ Entries before 0.4.8 were reconstructed on 2026-09-27 from DESIGN.md and session
 project had no version control until then. Snapshots of 0.3.13 (partial) and 0.4.0+ are in
 `releases/terra-towns/`.
 
+## 0.4.12 — 2026-10-02
+- **Guard profession** (TT-201, fixes TT-207). The Guard job could unlock but never be staffed;
+  villagers can now be Guards, working at the vanilla **target block** (no new block). Placeholder
+  outfit: iron helmet and blue tabard.
+- **Guards are village business.** No villager claims a target on its own: once a settlement is
+  a village, each free target inside it is handed to an unemployed resident, who becomes its
+  Guard. Hamlets never get guards, and a target in a redstone build out in the wild never turns
+  a passing villager into one. (`GuardRecruitment`)
+- **Guard Post** buildings now qualify by their target block, like every other job building;
+  a bell alone no longer makes a room a Guard Post.
+- Gym Leader and Guard villagers show their profession name instead of a raw translation key.
+- Harness: a `guard` check covers all of the above; it failed on 0.4.11.
+
 ## 0.4.11 — 2026-10-02
 - **Walkways cross bare rock.** Lanes only turned soil into path, so on a stony hillside they
   had a gap wherever the soil stopped, and a house cut into the slope stepped out of its door

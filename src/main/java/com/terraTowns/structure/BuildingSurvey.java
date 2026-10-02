@@ -171,7 +171,8 @@ public final class BuildingSurvey {
 
     /**
      * Anchor blocks for the building types no job defines. Only these are hand-picked; see the
-     * class doc. BATTLE_FACILITY has none yet — it is city-tier and not designed.
+     * class doc. BATTLE_FACILITY has none yet — it is city-tier and not designed. The Guard Post
+     * had the bell until 0.4.12, when the Guard job got its workstation (the target block).
      */
     private static final Map<BuildingCategory, List<ResourceLocation>> ANCHORS = Map.of(
             BuildingCategory.GYM, List.of(ResourceLocation.fromNamespaceAndPath("terra_towns", "gym_leaders_desk")),
@@ -179,7 +180,6 @@ public final class BuildingSurvey {
                     ResourceLocation.fromNamespaceAndPath("cobblemon", "pc")),
             BuildingCategory.POKEMART, List.of(ResourceLocation.fromNamespaceAndPath("cobblemon", "display_case"),
                     ResourceLocation.fromNamespaceAndPath("cobblemon", "tm_machine")),
-            BuildingCategory.BARRACKS_GUARD_POST, List.of(ResourceLocation.withDefaultNamespace("bell")),
             BuildingCategory.TRAIN_STATION, List.of(ResourceLocation.fromNamespaceAndPath("create", "track_station")));
 
     /** @return every building type {@code room} qualifies for, in enum order. */

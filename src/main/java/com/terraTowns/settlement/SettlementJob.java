@@ -1,5 +1,6 @@
 package com.terraTowns.settlement;
 
+import com.terraTowns.registry.TerraTownsRegistries;
 import com.terraTowns.structure.BuildingCategory;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.npc.VillagerProfession;
@@ -7,6 +8,7 @@ import net.minecraft.world.entity.npc.VillagerProfession;
 import javax.annotation.Nullable;
 import java.util.List;
 import java.util.Set;
+import java.util.function.Supplier;
 
 /**
  * The staffed roles a settlement can fill: the five jobs on the 0.4 roadmap.
@@ -29,36 +31,36 @@ public enum SettlementJob {
 
     /** Works the fields. Unlocked by the farm plots every hamlet already ships with. */
     FARMER("farmer", BuildingCategory.FARM_PLOTS,
-            List.of(VillagerProfession.FARMER, VillagerProfession.FISHERMAN,
+            () -> List.of(VillagerProfession.FARMER, VillagerProfession.FISHERMAN,
                     VillagerProfession.SHEPHERD)),
 
     /** Keeps the town in tools and armour. */
     SMITH("smith", BuildingCategory.SMITHY,
-            List.of(VillagerProfession.TOOLSMITH, VillagerProfession.WEAPONSMITH,
+            () -> List.of(VillagerProfession.TOOLSMITH, VillagerProfession.WEAPONSMITH,
                     VillagerProfession.ARMORER)),
 
     /**
-     * Watches the walls. Vanilla has no guard profession, so this job currently has no
-     * eligible villagers and can be unlocked but not staffed — it is waiting on the custom
-     * trainer NPCs in 1.5, and is deliberately listed with an empty eligibility set rather
-     * than mapped onto an unrelated vanilla trade.
+     * Watches the walls. Vanilla has no guard, so Terra Towns adds the profession, worked at
+     * the vanilla target block (TT-201). Until 0.4.12 this job could unlock but never be staffed.
      */
-    GUARD("guard", BuildingCategory.BARRACKS_GUARD_POST, List.of()),
+    GUARD("guard", BuildingCategory.BARRACKS_GUARD_POST,
+            () -> List.of(TerraTownsRegistries.GUARD_PROFESSION.get())),
 
     /** Runs the market stalls. */
     MERCHANT("merchant", BuildingCategory.MARKET_STALL,
-            List.of(VillagerProfession.BUTCHER, VillagerProfession.LEATHERWORKER,
+            () -> List.of(VillagerProfession.BUTCHER, VillagerProfession.LEATHERWORKER,
                     VillagerProfession.CARTOGRAPHER)),
 
     /** Raises the next building. Unlocked by the warehouse that stores its materials. */
     BUILDER("builder", BuildingCategory.WAREHOUSE,
-            List.of(VillagerProfession.MASON, VillagerProfession.FLETCHER));
+            () -> List.of(VillagerProfession.MASON, VillagerProfession.FLETCHER));
 
     private final String id;
     private final BuildingCategory unlockedBy;
-    private final List<VillagerProfession> eligible;
+    /** Supplied, not stored: a mod's own professions (Guard) don't exist yet when enums load. */
+    private final Supplier<List<VillagerProfession>> eligible;
 
-    SettlementJob(String id, BuildingCategory unlockedBy, List<VillagerProfession> eligible) {
+    SettlementJob(String id, BuildingCategory unlockedBy, Supplier<List<VillagerProfession>> eligible) {
         this.id = id;
         this.unlockedBy = unlockedBy;
         this.eligible = eligible;
@@ -75,12 +77,12 @@ public enum SettlementJob {
 
     /** Vanilla professions whose holders may be appointed to this job. */
     public List<VillagerProfession> eligibleProfessions() {
-        return eligible;
+        return eligible.get();
     }
 
     /** @return true if a villager of {@code profession} could hold this job. */
     public boolean accepts(VillagerProfession profession) {
-        return eligible.contains(profession);
+        return eligible.get().contains(profession);
     }
 
     /**
@@ -92,12 +94,12 @@ public enum SettlementJob {
     }
 
     /**
-     * @return true if this job can ever be filled by a villager. {@link #GUARD} cannot yet —
-     *         callers should surface it as "unlocked, awaiting trainer NPCs" rather than as a
-     *         job the player has failed to staff.
+     * @return true if this job can ever be filled by a villager. Every job can since 0.4.12; a
+     *         future job without professions should surface as "unlocked, awaiting NPCs" rather
+     *         than as a job the player has failed to staff.
      */
     public boolean isStaffable() {
-        return !eligible.isEmpty();
+        return !eligible.get().isEmpty();
     }
 
     public Component displayName() {

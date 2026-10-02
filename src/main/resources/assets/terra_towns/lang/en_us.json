@@ -1,6 +1,8 @@
 {
   "itemGroup.terra_towns": "Cobblemon: Terra Towns",
   "entity.terra_towns.gym_leader": "Gym Leader",
+  "entity.minecraft.villager.terra_towns.gym_leader": "Gym Leader",
+  "entity.minecraft.villager.terra_towns.guard": "Guard",
   "entity.terra_towns.professor": "Professor",
   "block.terra_towns.gym_leaders_desk": "Gym Leader's Desk",
   "block.terra_towns.route_marker": "Route Marker",

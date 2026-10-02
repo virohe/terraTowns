@@ -6,6 +6,7 @@ import com.terraTowns.registry.TerraTownsRegistries;
 import com.terraTowns.rival.RivalPosting;
 import com.terraTowns.settlement.JobBoard;
 import com.terraTowns.settlement.GymDesk;
+import com.terraTowns.settlement.GuardRecruitment;
 import com.terraTowns.structure.BuildingRegistry;
 import com.terraTowns.settlement.SettlementData;
 import com.terraTowns.settlement.SettlementJob;
@@ -81,6 +82,7 @@ public final class SettlementTickEvents {
             if (settlement.gymLeaderId() != null) {
                 checkPromotionReadiness(server, level, manager, settlement);
             }
+            GuardRecruitment.recruit(level, settlement);
             refreshJobs(server, level, manager, settlement);
         }
     }

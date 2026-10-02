@@ -9,7 +9,7 @@ license="All Rights Reserved"
 
 [[mods]]
 modId="terra_towns"
-version="0.4.11"
+version="0.4.12"
 displayName="Cobblemon: Terra Towns"
 #updateJSONURL="https://change.me.example.invalid/updates.json"
 #displayURL="https://change.me.to.your.mods.homepage.example.invalid/"

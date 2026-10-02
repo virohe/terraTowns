@@ -23,6 +23,7 @@ import net.minecraft.world.item.CreativeModeTab;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.world.level.block.state.BlockBehaviour;
 import net.minecraft.world.level.block.state.properties.NoteBlockInstrument;
@@ -140,6 +141,37 @@ public final class TerraTownsRegistries {
                     "gym_leader",
                     holder -> holder.is(GYM_LEADERS_DESK_POI_KEY),
                     holder -> holder.is(GYM_LEADERS_DESK_POI_KEY),
+                    ImmutableSet.<Item>of(),
+                    ImmutableSet.<Block>of(),
+                    null));
+
+    // --- villager guard: the vanilla target block as its job site (TT-201) ---
+
+    public static final ResourceKey<PoiType> GUARD_POST_POI_KEY = ResourceKey.create(
+            Registries.POINT_OF_INTEREST_TYPE,
+            ResourceLocation.fromNamespaceAndPath(TerraTowns.MOD_ID, "guard_post"));
+
+    /**
+     * The vanilla target block as the Guard's job site: no new block, the archery target reads
+     * as a guard post and vanilla gives it no job. A villager-workstation POI can only be
+     * claimed by one POI type, so if another mod ever registers the target block too, the game
+     * refuses to start; the realgen rig (the real pack) would show it.
+     */
+    public static final DeferredHolder<PoiType, PoiType> GUARD_POST_POI =
+            POI_TYPES.register("guard_post", () -> new PoiType(
+                    Set.copyOf(Blocks.TARGET.getStateDefinition().getPossibleStates()), 1, 1));
+
+    /**
+     * The Guard profession: the job {@code SettlementJob.GUARD} staffs. No trades yet. It never
+     * goes looking for a post itself (acquirable = nothing): only villages get guards, so
+     * {@code GuardRecruitment} hands posts out, and a guard whose target is broken goes back
+     * to being unemployed rather than claiming one in a hamlet.
+     */
+    public static final DeferredHolder<VillagerProfession, VillagerProfession> GUARD_PROFESSION =
+            VILLAGER_PROFESSIONS.register("guard", () -> new VillagerProfession(
+                    "guard",
+                    holder -> holder.is(GUARD_POST_POI_KEY),
+                    holder -> false,
                     ImmutableSet.<Item>of(),
                     ImmutableSet.<Block>of(),
                     null));
