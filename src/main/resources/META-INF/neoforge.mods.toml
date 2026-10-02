@@ -1,0 +1,89 @@
+# neoforge.mods.toml for Cobblemon: Terra Towns
+# Static metadata (values are not template-expanded). Keep in sync with gradle.properties.
+
+modLoader="javafml"
+loaderVersion="[1,)"
+license="All Rights Reserved"
+
+#issueTrackerURL="https://change.me.to.your.issue.tracker.example.invalid/"
+
+[[mods]]
+modId="terra_towns"
+version="0.4.9"
+displayName="Cobblemon: Terra Towns"
+#updateJSONURL="https://change.me.example.invalid/updates.json"
+#displayURL="https://change.me.to.your.mods.homepage.example.invalid/"
+#logoFile="terra_towns.png"
+authors="Virohe"
+description='''
+A standalone companion mod to Terra Continental that overhauls the village /
+settlement system with a Cobblemon flavor: a hamlet -> village -> town -> city
+progression driven by gyms, influence, structure registration, and routes.
+'''
+
+# Mixin config is declared so FML loads it. Currently empty (no mixins yet) but
+# present so the wiring exists from day one.
+[[mixins]]
+config="terra_towns.mixins.json"
+
+#[[accessTransformers]]
+#file="META-INF/accesstransformer.cfg"
+
+# --- Hard dependencies ---
+[[dependencies.terra_towns]]
+    modId="neoforge"
+    type="required"
+    versionRange="[21.1.1,)"
+    ordering="NONE"
+    side="BOTH"
+
+[[dependencies.terra_towns]]
+    modId="minecraft"
+    type="required"
+    versionRange="[1.21.1]"
+    ordering="NONE"
+    side="BOTH"
+
+# --- Required companion mods (as of 0.1) ---
+# Cobblemon, Create and Terra Continental are now HARD dependencies: Terra Towns'
+# core gameplay (gyms, train stations, coastal hamlets) is built directly on top of
+# them, so the mod refuses to load without them. They are still feature-gated in code
+# behind the Integrations flags so individual call sites stay null-safe, but FML will
+# not load the mod unless these mods are present.
+
+# Cobblemon: badge counts for gym scaling, battle triggers, Pokecenter heal hooks.
+[[dependencies.terra_towns]]
+    modId="cobblemon"
+    type="required"
+    mandatory=true
+    versionRange="[1.6,)"
+    ordering="AFTER"
+    side="BOTH"
+
+# Create: train station unlock at the town tier.
+[[dependencies.terra_towns]]
+    modId="create"
+    type="required"
+    mandatory=true
+    versionRange="[6.0,)"
+    ordering="AFTER"
+    side="BOTH"
+
+# Terra Continental: coastal hamlet spawning + biome-based gym typing.
+[[dependencies.terra_towns]]
+    modId="terra_continental"
+    type="required"
+    mandatory=true
+    versionRange="[0.0.1,)"
+    ordering="AFTER"
+    side="BOTH"
+
+# --- Transitive / optional companion mods ---
+# GeckoLib is a transitive Cobblemon dependency (NeoForge resolves it for us), so it
+# stays optional here rather than forcing a second hard edge.
+[[dependencies.terra_towns]]
+    modId="geckolib"
+    type="optional"
+    versionRange="[4.7,)"
+    ordering="AFTER"
+    side="BOTH"

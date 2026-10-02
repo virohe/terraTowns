@@ -1,0 +1,24 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "pattern": [
+    "T",
+    "S",
+    "C"
+  ],
+  "key": {
+    "T": {
+      "item": "minecraft:torch"
+    },
+    "S": {
+      "item": "minecraft:stick"
+    },
+    "C": {
+      "item": "minecraft:cobblestone"
+    }
+  },
+  "result": {
+    "id": "terra_towns:route_marker",
+    "count": 2
+  }
+}

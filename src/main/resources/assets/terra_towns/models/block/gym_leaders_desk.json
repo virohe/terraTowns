@@ -1,0 +1,795 @@
+{
+  "parent": "minecraft:block/block",
+  "textures": {
+    "desktop": "terra_towns:block/desktop",
+    "legs": "terra_towns:block/legs",
+    "side_stretcher": "terra_towns:block/side_stretcher",
+    "back_stretcher": "terra_towns:block/back_stretcher",
+    "side_wall": "terra_towns:block/side_wall",
+    "back_wall": "terra_towns:block/back_wall",
+    "particle": "terra_towns:block/desktop"
+  },
+  "elements": [
+    {
+      "name": "Back Wall",
+      "from": [
+        -3.5,
+        5,
+        1
+      ],
+      "to": [
+        19.5,
+        14,
+        2
+      ],
+      "faces": {
+        "east": {
+          "uv": [
+            0.5,
+            4.5,
+            0.75,
+            6.75
+          ],
+          "texture": "#back_wall"
+        },
+        "south": {
+          "uv": [
+            0.0,
+            0.0,
+            5.75,
+            2.25
+          ],
+          "texture": "#back_wall"
+        },
+        "west": {
+          "uv": [
+            0.75,
+            4.5,
+            1.0,
+            6.75
+          ],
+          "texture": "#back_wall"
+        },
+        "north": {
+          "uv": [
+            0.0,
+            2.25,
+            5.75,
+            4.5
+          ],
+          "texture": "#back_wall"
+        },
+        "up": {
+          "uv": [
+            0.25,
+            10.25,
+            0.0,
+            4.5
+          ],
+          "texture": "#back_wall",
+          "rotation": 270
+        },
+        "down": {
+          "uv": [
+            0.5,
+            4.5,
+            0.25,
+            10.25
+          ],
+          "texture": "#back_wall",
+          "rotation": 90
+        }
+      }
+    },
+    {
+      "name": "Desk Top",
+      "from": [
+        -6,
+        14,
+        0
+      ],
+      "to": [
+        22,
+        16,
+        16
+      ],
+      "faces": {
+        "east": {
+          "uv": [
+            0.0,
+            7.5,
+            4.0,
+            8.0
+          ],
+          "texture": "#desktop"
+        },
+        "south": {
+          "uv": [
+            0.0,
+            7.0,
+            7.0,
+            7.5
+          ],
+          "texture": "#desktop"
+        },
+        "west": {
+          "uv": [
+            4.0,
+            7.5,
+            8.0,
+            8.0
+          ],
+          "texture": "#desktop"
+        },
+        "north": {
+          "uv": [
+            7.0,
+            7.0,
+            14.0,
+            7.5
+          ],
+          "texture": "#desktop"
+        },
+        "up": {
+          "uv": [
+            4.0,
+            7.0,
+            0.0,
+            0.0
+          ],
+          "texture": "#desktop",
+          "rotation": 270
+        },
+        "down": {
+          "uv": [
+            8.0,
+            0.0,
+            4.0,
+            7.0
+          ],
+          "texture": "#desktop",
+          "rotation": 90
+        }
+      }
+    },
+    {
+      "name": "Back Right Foot",
+      "from": [
+        19.5,
+        0,
+        0.5
+      ],
+      "to": [
+        21.5,
+        14,
+        2.5
+      ],
+      "faces": {
+        "east": {
+          "uv": [
+            1.0,
+            0.0,
+            3.0,
+            14.0
+          ],
+          "texture": "#legs"
+        },
+        "south": {
+          "uv": [
+            0.0,
+            0.0,
+            2.0,
+            14.0
+          ],
+          "texture": "#legs"
+        },
+        "west": {
+          "uv": [
+            0.0,
+            0.0,
+            2.0,
+            14.0
+          ],
+          "texture": "#legs"
+        },
+        "north": {
+          "uv": [
+            4.0,
+            0.0,
+            4.0,
+            14.0
+          ],
+          "texture": "#legs"
+        },
+        "up": {
+          "uv": [
+            0.0,
+            0.0,
+            2.0,
+            2.0
+          ],
+          "texture": "#legs",
+          "rotation": 270
+        },
+        "down": {
+          "uv": [
+            0.0,
+            0.0,
+            2.0,
+            2.0
+          ],
+          "texture": "#legs",
+          "rotation": 90
+        }
+      }
+    },
+    {
+      "name": "Front Right Foot",
+      "from": [
+        19.5,
+        0,
+        13.5
+      ],
+      "to": [
+        21.5,
+        14,
+        15.5
+      ],
+      "faces": {
+        "east": {
+          "uv": [
+            0.0,
+            0.0,
+            2.0,
+            14.0
+          ],
+          "texture": "#legs"
+        },
+        "south": {
+          "uv": [
+            2.0,
+            0.0,
+            4.0,
+            14.0
+          ],
+          "texture": "#legs"
+        },
+        "west": {
+          "uv": [
+            4.0,
+            0.0,
+            6.0,
+            14.0
+          ],
+          "texture": "#legs"
+        },
+        "north": {
+          "uv": [
+            6.0,
+            0.0,
+            8.0,
+            14.0
+          ],
+          "texture": "#legs"
+        },
+        "up": {
+          "uv": [
+            10.0,
+            2.0,
+            8.0,
+            0.0
+          ],
+          "texture": "#legs",
+          "rotation": 270
+        },
+        "down": {
+          "uv": [
+            10.0,
+            2.0,
+            8.0,
+            4.0
+          ],
+          "texture": "#legs",
+          "rotation": 90
+        }
+      }
+    },
+    {
+      "name": "Back Left Foot",
+      "from": [
+        -5.5,
+        0,
+        0.5
+      ],
+      "to": [
+        -3.5,
+        14,
+        2.5
+      ],
+      "faces": {
+        "east": {
+          "uv": [
+            0.0,
+            0.0,
+            2.0,
+            14.0
+          ],
+          "texture": "#legs"
+        },
+        "south": {
+          "uv": [
+            0.0,
+            0.0,
+            2.0,
+            14.0
+          ],
+          "texture": "#legs"
+        },
+        "west": {
+          "uv": [
+            0.0,
+            0.0,
+            2.0,
+            14.0
+          ],
+          "texture": "#legs"
+        },
+        "north": {
+          "uv": [
+            4.0,
+            0.0,
+            4.0,
+            14.0
+          ],
+          "texture": "#legs"
+        },
+        "up": {
+          "uv": [
+            0.0,
+            0.0,
+            2.0,
+            2.0
+          ],
+          "texture": "#legs",
+          "rotation": 270
+        },
+        "down": {
+          "uv": [
+            0.0,
+            0.0,
+            2.0,
+            2.0
+          ],
+          "texture": "#legs",
+          "rotation": 90
+        }
+      }
+    },
+    {
+      "name": "Front Left Foot",
+      "from": [
+        -5.5,
+        0,
+        13.5
+      ],
+      "to": [
+        -3.5,
+        14,
+        15.5
+      ],
+      "faces": {
+        "east": {
+          "uv": [
+            0.0,
+            0.0,
+            2.0,
+            14.0
+          ],
+          "texture": "#legs"
+        },
+        "south": {
+          "uv": [
+            0.0,
+            0.0,
+            2.0,
+            14.0
+          ],
+          "texture": "#legs"
+        },
+        "west": {
+          "uv": [
+            0.0,
+            0.0,
+            2.0,
+            14.0
+          ],
+          "texture": "#legs"
+        },
+        "north": {
+          "uv": [
+            4.0,
+            0.0,
+            4.0,
+            14.0
+          ],
+          "texture": "#legs"
+        },
+        "up": {
+          "uv": [
+            0.0,
+            0.0,
+            2.0,
+            2.0
+          ],
+          "texture": "#legs",
+          "rotation": 270
+        },
+        "down": {
+          "uv": [
+            0.0,
+            0.0,
+            2.0,
+            2.0
+          ],
+          "texture": "#legs",
+          "rotation": 90
+        }
+      }
+    },
+    {
+      "name": "Bottom Right Stretcher",
+      "from": [
+        19.5,
+        1,
+        2.5
+      ],
+      "to": [
+        21.5,
+        3,
+        13.5
+      ],
+      "faces": {
+        "east": {
+          "uv": [
+            0.0,
+            0.0,
+            11.0,
+            2.0
+          ],
+          "texture": "#side_stretcher"
+        },
+        "south": {
+          "uv": [
+            0.0,
+            8.0,
+            2.0,
+            10.0
+          ],
+          "texture": "#side_stretcher"
+        },
+        "west": {
+          "uv": [
+            0.0,
+            2.0,
+            11.0,
+            4.0
+          ],
+          "texture": "#side_stretcher"
+        },
+        "north": {
+          "uv": [
+            2.0,
+            8.0,
+            4.0,
+            10.0
+          ],
+          "texture": "#side_stretcher"
+        },
+        "up": {
+          "uv": [
+            11.0,
+            6.0,
+            0.0,
+            4.0
+          ],
+          "texture": "#side_stretcher",
+          "rotation": 270
+        },
+        "down": {
+          "uv": [
+            11.0,
+            6.0,
+            0.0,
+            8.0
+          ],
+          "texture": "#side_stretcher",
+          "rotation": 90
+        }
+      }
+    },
+    {
+      "name": "Left Wall",
+      "from": [
+        -5,
+        3,
+        2.5
+      ],
+      "to": [
+        -4,
+        14,
+        13.5
+      ],
+      "faces": {
+        "east": {
+          "uv": [
+            0.0,
+            0.0,
+            5.5,
+            5.5
+          ],
+          "texture": "#side_wall"
+        },
+        "south": {
+          "uv": [
+            5.5,
+            0.0,
+            6.0,
+            5.5
+          ],
+          "texture": "#side_wall"
+        },
+        "west": {
+          "uv": [
+            0.0,
+            5.5,
+            5.5,
+            11.0
+          ],
+          "texture": "#side_wall"
+        },
+        "north": {
+          "uv": [
+            5.5,
+            5.5,
+            6.0,
+            11.0
+          ],
+          "texture": "#side_wall"
+        },
+        "up": {
+          "uv": [
+            11.5,
+            0.5,
+            6.0,
+            0.0
+          ],
+          "texture": "#side_wall",
+          "rotation": 270
+        },
+        "down": {
+          "uv": [
+            11.5,
+            0.5,
+            6.0,
+            1.0
+          ],
+          "texture": "#side_wall",
+          "rotation": 90
+        }
+      }
+    },
+    {
+      "name": "Bottom Back Stretcher",
+      "from": [
+        -3.5,
+        3,
+        0.5
+      ],
+      "to": [
+        19.5,
+        5,
+        2.5
+      ],
+      "faces": {
+        "east": {
+          "uv": [
+            2.0,
+            2.0,
+            3.0,
+            3.0
+          ],
+          "texture": "#back_stretcher"
+        },
+        "south": {
+          "uv": [
+            0.0,
+            0.0,
+            11.5,
+            1.0
+          ],
+          "texture": "#back_stretcher"
+        },
+        "west": {
+          "uv": [
+            2.0,
+            3.0,
+            3.0,
+            4.0
+          ],
+          "texture": "#back_stretcher"
+        },
+        "north": {
+          "uv": [
+            0.0,
+            1.0,
+            11.5,
+            2.0
+          ],
+          "texture": "#back_stretcher"
+        },
+        "up": {
+          "uv": [
+            1.0,
+            13.5,
+            0.0,
+            2.0
+          ],
+          "texture": "#back_stretcher",
+          "rotation": 270
+        },
+        "down": {
+          "uv": [
+            2.0,
+            2.0,
+            1.0,
+            13.5
+          ],
+          "texture": "#back_stretcher",
+          "rotation": 90
+        }
+      }
+    },
+    {
+      "name": "Bottom Left Stretcher",
+      "from": [
+        -5.5,
+        1,
+        2.5
+      ],
+      "to": [
+        -3.5,
+        3,
+        13.5
+      ],
+      "faces": {
+        "east": {
+          "uv": [
+            0.0,
+            0.0,
+            11.0,
+            2.0
+          ],
+          "texture": "#side_stretcher"
+        },
+        "south": {
+          "uv": [
+            0.0,
+            8.0,
+            2.0,
+            10.0
+          ],
+          "texture": "#side_stretcher"
+        },
+        "west": {
+          "uv": [
+            0.0,
+            2.0,
+            11.0,
+            4.0
+          ],
+          "texture": "#side_stretcher"
+        },
+        "north": {
+          "uv": [
+            2.0,
+            8.0,
+            4.0,
+            10.0
+          ],
+          "texture": "#side_stretcher"
+        },
+        "up": {
+          "uv": [
+            11.0,
+            6.0,
+            0.0,
+            4.0
+          ],
+          "texture": "#side_stretcher",
+          "rotation": 270
+        },
+        "down": {
+          "uv": [
+            11.0,
+            6.0,
+            0.0,
+            8.0
+          ],
+          "texture": "#side_stretcher",
+          "rotation": 90
+        }
+      }
+    },
+    {
+      "name": "Right Wall",
+      "from": [
+        20,
+        3,
+        2.5
+      ],
+      "to": [
+        21,
+        14,
+        13.5
+      ],
+      "faces": {
+        "east": {
+          "uv": [
+            0.0,
+            0.0,
+            5.5,
+            5.5
+          ],
+          "texture": "#side_wall"
+        },
+        "south": {
+          "uv": [
+            5.5,
+            0.0,
+            6.0,
+            5.5
+          ],
+          "texture": "#side_wall"
+        },
+        "west": {
+          "uv": [
+            0.0,
+            5.5,
+            5.5,
+            11.0
+          ],
+          "texture": "#side_wall"
+        },
+        "north": {
+          "uv": [
+            5.5,
+            5.5,
+            6.0,
+            11.0
+          ],
+          "texture": "#side_wall"
+        },
+        "up": {
+          "uv": [
+            11.5,
+            0.5,
+            6.0,
+            0.0
+          ],
+          "texture": "#side_wall",
+          "rotation": 270
+        },
+        "down": {
+          "uv": [
+            11.5,
+            0.5,
+            6.0,
+            1.0
+          ],
+          "texture": "#side_wall",
+          "rotation": 90
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,17 @@
+# Gradle / IDE
+.gradle/
+build/
+out/
+bin/
+!**/src/**/bin/
+.idea/
+*.iml
+.vscode/
+run/
+
+# Headless harness: only server.properties and the dependency stubs are source
+run-hamlettest/*
+!run-hamlettest/server.properties
+!run-hamlettest/mods/
+!run-hamlettest/config/
+!run-hamlettest/eula.txt

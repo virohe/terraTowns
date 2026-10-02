@@ -1,0 +1,5 @@
+{
+  "variants": {
+    "": { "model": "terra_towns:block/route_marker" }
+  }
+}

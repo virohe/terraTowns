@@ -1,0 +1,8 @@
+{
+  "variants": {
+    "facing=north": { "model": "terra_towns:block/gym_leaders_desk" },
+    "facing=east":  { "model": "terra_towns:block/gym_leaders_desk", "y": 90 },
+    "facing=south": { "model": "terra_towns:block/gym_leaders_desk", "y": 180 },
+    "facing=west":  { "model": "terra_towns:block/gym_leaders_desk", "y": 270 }
+  }
+}
