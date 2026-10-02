@@ -81,6 +81,7 @@ public final class JobAudit {
         report.put("gymDesk", gymDesk(level, manager));
         report.put("hamletAssign", hamletAssign(manager));
         report.put("treeFelling", treeFelling(level, manager));
+        report.put("stonePath", stonePath(level, manager));
 
         for (SettlementData settlement : manager.all()) {
             Map<String, Object> row = new LinkedHashMap<>();
@@ -514,6 +515,55 @@ public final class JobAudit {
                 && level.getBlockState(at.apply(13, 8)).is(Blocks.STONE));
 
         for (BlockPos q : BlockPos.betweenClosed(at.apply(0, 5), at.apply(29, 29).above(10))) {
+            if (!level.getBlockState(q).isAir()) {
+                level.setBlock(q, Blocks.AIR.defaultBlockState(), 2);
+            }
+        }
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("verdict", verdict);
+        return out;
+    }
+
+    /**
+     * A walkway across bare rock, on a staged strip in the sky (TT-209): plaza at the west end,
+     * a doorstep at the east end, grass for the western half and stone for the eastern half, so
+     * the door opens onto stone like a house cut into a hillside. Walkways only turned soil into
+     * path, so every stone column stayed stone: the lane started wherever the soil did, and the
+     * step out of the door landed on rock. The fixed-seed hamlets no longer put a house on
+     * stone, so this scene is the only thing that exercises it.
+     */
+    private static Map<String, Object> stonePath(ServerLevel level, SettlementManager manager) {
+        // Centred on the hamlet: the route search reads ground across its whole bounding box, and
+        // off to one side that meant generating fresh chunks inside one tick (watchdog kill).
+        BlockPos o = manager.all().iterator().next().center().above(90).offset(-15, 0, -3);
+        int y = o.getY();
+        java.util.function.BiFunction<Integer, Integer, BlockPos> at = (dx, dz) -> new BlockPos(o.getX() + dx, y, o.getZ() + dz);
+        // Strip: x 0..30, z 0..6. Grass for x <= 14, stone beyond.
+        for (int dx = 0; dx <= 30; dx++) {
+            for (int dz = 0; dz <= 6; dz++) {
+                level.setBlock(at.apply(dx, dz), (dx <= 14 ? Blocks.GRASS_BLOCK : Blocks.STONE).defaultBlockState(), 3);
+            }
+        }
+        int[] plaza = {o.getX() + 1, o.getZ() + 1, o.getX() + 5, o.getZ() + 5, y + 5};
+        BlockPos door = at.apply(28, 3);
+        HamletPiece.layPathForAudit(level, door, Direction.WEST, plaza);
+
+        // Continuity: every x between the doorstep and the plaza has a path block somewhere
+        // across the strip (the route may wiggle in z, but must not skip a column).
+        java.util.function.IntPredicate pathedAt = dx -> {
+            for (int dz = 0; dz <= 6; dz++) {
+                if (level.getBlockState(at.apply(dx, dz)).is(Blocks.DIRT_PATH)) {
+                    return true;
+                }
+            }
+            return false;
+        };
+        Map<String, Object> verdict = new LinkedHashMap<>();
+        verdict.put("doorstepIsPath", level.getBlockState(door).is(Blocks.DIRT_PATH));
+        verdict.put("laneUnbrokenOnStone", java.util.stream.IntStream.rangeClosed(15, 28).allMatch(pathedAt));
+        verdict.put("laneUnbrokenOnGrass", java.util.stream.IntStream.rangeClosed(6, 14).allMatch(pathedAt));
+
+        for (BlockPos q : BlockPos.betweenClosed(at.apply(0, 0), at.apply(30, 6).above(2))) {
             if (!level.getBlockState(q).isAir()) {
                 level.setBlock(q, Blocks.AIR.defaultBlockState(), 2);
             }

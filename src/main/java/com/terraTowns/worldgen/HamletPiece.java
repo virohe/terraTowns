@@ -1092,20 +1092,40 @@ public final class HamletPiece {
             }
             BlockPos top = new BlockPos(column[0], y, column[1]);
             BlockState current = level.getBlockState(top);
-            for (BlockState candidate : PATHABLE) {
-                if (current.is(candidate.getBlock()) || isModdedSoil(current)) {
-                    set(top, Blocks.DIRT_PATH.defaultBlockState());
-                    // Pop any small plant sitting on the new path block so the lane stays
-                    // visible (grass/flowers are replaceable cover, not terrain).
-                    BlockPos above = top.above();
-                    BlockState plant = level.getBlockState(above);
-                    if (!plant.isAir() && plant.canBeReplaced() && plant.getFluidState().isEmpty()) {
-                        set(above, Blocks.AIR.defaultBlockState());
-                    }
-                    break;
-                }
+            if (!isPathable(current)) {
+                continue;
+            }
+            set(top, Blocks.DIRT_PATH.defaultBlockState());
+            // Pop any small plant sitting on the new path block so the lane stays
+            // visible (grass/flowers are replaceable cover, not terrain).
+            BlockPos above = top.above();
+            BlockState plant = level.getBlockState(above);
+            if (!plant.isAir() && plant.canBeReplaced() && plant.getFluidState().isEmpty()) {
+                set(above, Blocks.AIR.defaultBlockState());
             }
         }
+    }
+
+    /**
+     * Ground a walkway turns into path: the soils a shovel would path, and bare rock. Rock was
+     * left out until 0.4.11, so a lane across a stony hillside had a gap wherever the soil
+     * stopped, and a house cut into one stepped out of its door onto stone (TT-209).
+     */
+    private static boolean isPathable(BlockState s) {
+        if (isModdedSoil(s) || isRock(s)) {
+            return true;
+        }
+        for (BlockState candidate : PATHABLE) {
+            if (s.is(candidate.getBlock())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** Terrain that isn't soil (stone, deepslate, sandstone, terracotta, calcite, …). */
+    private static boolean isRock(BlockState s) {
+        return isTerrain(s) && !s.is(BlockTags.DIRT) && !s.is(Blocks.DIRT_PATH);
     }
 
     /** A* from a doorstep to the well's plaza. @return the columns, door first, or null. */
@@ -1452,6 +1472,17 @@ public final class HamletPiece {
         HamletPiece h = new HamletPiece(level, BlockPos.ZERO); // tree felling draws no randomness
         h.placedFootprints = footprints;
         h.clearTreesAround(footprints);
+    }
+
+    /** Dev harness: lay one walkway from {@code door} to the plaza {@code center} (see JobAudit#stonePath). */
+    static void layPathForAudit(ServerLevel level, BlockPos door, Direction doorOut, int[] center) {
+        HamletPiece h = new HamletPiece(level, BlockPos.ZERO); // walkways draw no randomness
+        h.centerFootprint = center;
+        List<int[]> footprints = new ArrayList<>();
+        footprints.add(center);
+        h.placedFootprints = footprints;
+        h.layPath(door.getX(), door.getZ(), doorOut, (center[0] + center[2]) / 2, (center[1] + center[3]) / 2,
+                footprints);
     }
 
     /**

@@ -5,6 +5,14 @@ Entries before 0.4.8 were reconstructed on 2026-09-27 from DESIGN.md and session
 project had no version control until then. Snapshots of 0.3.13 (partial) and 0.4.0+ are in
 `releases/terra-towns/`.
 
+## 0.4.11 — 2026-10-02
+- **Walkways cross bare rock.** Lanes only turned soil into path, so on a stony hillside they
+  had a gap wherever the soil stopped, and a house cut into the slope stepped out of its door
+  onto stone (TT-209). Rock (stone, deepslate, sandstone, terracotta, calcite, …) is paved now;
+  mud and moss still aren't. (`HamletPiece.isPathable`)
+- Harness: a staged `stonePath` scene lays a lane from a doorstep on stone to a plaza on grass
+  and checks it's unbroken. It failed on 0.4.10.
+
 ## 0.4.10 — 2026-10-02
 - **Same seed, same hamlets.** Hamlet layouts were drawn from the server's per-boot random, so
   one world seed built different hamlets every time it was created; they are now seeded from
