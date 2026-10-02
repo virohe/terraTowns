@@ -80,6 +80,17 @@ neoForge {
             systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id
         }
 
+        // Visual check of client-only rendering (RenderCheck): joins run-rendercheck/saves/
+        // rendercheck (a copy of the harness world), stages a scene, screenshots it into
+        // run-rendercheck/screenshots/, quits. Dev-only, inert without the property.
+        renderCheck {
+            client()
+            gameDirectory = file('run-rendercheck')
+            systemProperty 'terratowns.renderCheck', 'true'
+            programArgument '--quickPlaySingleplayer'
+            programArgument 'rendercheck'
+        }
+
         // Headless placement harness: boots a dedicated server in run-hamlettest/, lets
         // WorldEvents build its 8 spawn hamlets, has HamletAudit re-measure every piece into
         // hamlet-audit.json, then halts. run-hamlettest/mods/ holds lowcodefml stubs for the

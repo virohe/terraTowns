@@ -182,6 +182,20 @@ public final class HamletPiece {
      * sample grid, so this can stay loose enough not to starve hilly sites.
      */
     private static final int MAX_PLOT_RELIEF = 3;
+
+    /**
+     * How far {@link #settle} may move a hamlet off the finder's spot to sit on more buildable
+     * ground, and the grids it searches on. The finder chooses the AREA (a coastal site, from
+     * noise heights that can't see basalt columns or carved coves); the builder then picks the
+     * best ground in it. A playtest hamlet (world 69, 2026-10-02) sat in a pocket between
+     * ocean and basalt with an open allium field just beyond its layout radius: every piece
+     * after the fourth was rejected as overlapping, and it got 2 houses.
+     */
+    private static final int SETTLE_RADIUS = 40;
+    private static final int SETTLE_STEP = 8;
+    private static final int CAPACITY_STEP = 6;
+    /** Patch half-size a buildable cell must be level across: about a small house. */
+    private static final int CAPACITY_PATCH = 4;
     /** Clearance (blocks) added around each placed piece when reserving its plot. */
     private static final int PLOT_MARGIN = 2;
     /**
@@ -321,7 +335,7 @@ public final class HamletPiece {
         // The finder reads noise heights, which don't show carved water crags. If the chosen
         // centre actually fell on a below-sea-level crag, slide the whole hamlet to the nearest
         // dry, above-sea column so we never build the spawn (or houses) into water.
-        BlockPos dry = nearestDryColumn(origin.getX(), origin.getZ(), 20);
+        BlockPos dry = settle(nearestDryColumn(origin.getX(), origin.getZ(), 20));
 
         // 1. The well/spawn goes to the flattest, clearest small patch near the site centre.
         int wellX = dry.getX();
@@ -1861,6 +1875,83 @@ public final class HamletPiece {
      * @return the nearest column to (cx,cz) whose real ground is at or above sea level,
      *         searching rings outward to {@code maxR}; falls back to (cx,cz) if none found.
      */
+    /**
+     * Move the hamlet's centre to the roomiest spot within {@link #SETTLE_RADIUS} of
+     * {@code site}: the one with the most buildable cells inside its layout radius (dry, and no
+     * steeper than a plot may be; the plot scorer's terrain rule, on a coarse cached grid).
+     * Candidates are tried nearest-first and only a strictly roomier one wins, so a site that is
+     * already as good as anything around it stays put.
+     */
+    private BlockPos settle(BlockPos site) {
+        List<int[]> offsets = new ArrayList<>();
+        for (int dx = -SETTLE_RADIUS; dx <= SETTLE_RADIUS; dx += SETTLE_STEP) {
+            for (int dz = -SETTLE_RADIUS; dz <= SETTLE_RADIUS; dz += SETTLE_STEP) {
+                if (dx * dx + dz * dz <= SETTLE_RADIUS * SETTLE_RADIUS) {
+                    offsets.add(new int[]{dx, dz});
+                }
+            }
+        }
+        offsets.sort(Comparator.comparingInt(o -> o[0] * o[0] + o[1] * o[1]));
+        int bestX = site.getX();
+        int bestZ = site.getZ();
+        int start = capacity(bestX, bestZ);
+        int best = start;
+        for (int[] o : offsets) {
+            int x = site.getX() + o[0];
+            int z = site.getZ() + o[1];
+            if (groundTop(x, z) < level.getSeaLevel()) {
+                continue; // the centre itself must be dry land
+            }
+            int c = capacity(x, z);
+            if (c > best) {
+                best = c;
+                bestX = x;
+                bestZ = z;
+            }
+        }
+        if (bestX != site.getX() || bestZ != site.getZ()) {
+            TerraTowns.LOGGER.info("Hamlet at {},{} settled {} blocks to {},{} for room ({} -> {} buildable cells)",
+                    site.getX(), site.getZ(), (int) Math.sqrt(Math.pow(bestX - site.getX(), 2) + Math.pow(bestZ - site.getZ(), 2)),
+                    bestX, bestZ, start, best);
+        }
+        return new BlockPos(bestX, 0, bestZ);
+    }
+
+    /** Buildable cells within the layout radius of {@code cx, cz}, on a world-aligned grid. */
+    private int capacity(int cx, int cz) {
+        int n = 0;
+        int x0 = Math.floorDiv(cx - PLOT_RADIUS, CAPACITY_STEP) * CAPACITY_STEP;
+        int z0 = Math.floorDiv(cz - PLOT_RADIUS, CAPACITY_STEP) * CAPACITY_STEP;
+        for (int x = x0; x <= cx + PLOT_RADIUS; x += CAPACITY_STEP) {
+            for (int z = z0; z <= cz + PLOT_RADIUS; z += CAPACITY_STEP) {
+                int dx = x - cx;
+                int dz = z - cz;
+                if (dx * dx + dz * dz <= PLOT_RADIUS * PLOT_RADIUS && buildable(x, z)) {
+                    n++;
+                }
+            }
+        }
+        return n;
+    }
+
+    private final Map<Long, Boolean> buildableCache = new HashMap<>();
+
+    /** Dry, and level within {@link #MAX_PLOT_RELIEF} across a small-house patch. */
+    private boolean buildable(int x, int z) {
+        return buildableCache.computeIfAbsent(columnKey(x, z), k -> {
+            int min = Integer.MAX_VALUE;
+            int max = Integer.MIN_VALUE;
+            for (int ix = -CAPACITY_PATCH; ix <= CAPACITY_PATCH; ix += CAPACITY_PATCH) {
+                for (int iz = -CAPACITY_PATCH; iz <= CAPACITY_PATCH; iz += CAPACITY_PATCH) {
+                    int y = groundTop(x + ix, z + iz);
+                    min = Math.min(min, y);
+                    max = Math.max(max, y);
+                }
+            }
+            return min >= level.getSeaLevel() && max - min <= MAX_PLOT_RELIEF;
+        });
+    }
+
     private BlockPos nearestDryColumn(int cx, int cz, int maxR) {
         int sea = level.getSeaLevel();
         if (groundTop(cx, cz) >= sea) {

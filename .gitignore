@@ -15,3 +15,4 @@ run-hamlettest/*
 !run-hamlettest/mods/
 !run-hamlettest/config/
 !run-hamlettest/eula.txt
+run-rendercheck/

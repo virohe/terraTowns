@@ -919,6 +919,22 @@ public final class JobAudit {
                 armour.put("swapsForBetter", idle.getItemBySlot(chest).is(net.minecraft.world.item.Items.DIAMOND_CHESTPLATE)
                         && !better.isAlive() && ironDropped);
                 level.getEntitiesOfClass(ItemEntity.class, idle.getBoundingBox().inflate(2.0)).forEach(ItemEntity::discard);
+
+                // Fetching is vanilla's (walk to what it wantsToPickUp); the mixin makes a guard
+                // want armour that beats what it wears, and nothing worse. Calling the real
+                // villager method proves the mixin is applied, not just compiled.
+                var netherite = new net.minecraft.world.item.ItemStack(net.minecraft.world.item.Items.NETHERITE_CHESTPLATE);
+                var ironChest = new net.minecraft.world.item.ItemStack(net.minecraft.world.item.Items.IRON_CHESTPLATE);
+                armour.put("wantsBetterArmour", idle.wantsToPickUp(netherite) && !idle.wantsToPickUp(ironChest));
+                Villager other = null;
+                for (Villager v : level.getEntitiesOfClass(Villager.class, box)) {
+                    if (!v.isBaby() && !com.terraTowns.settlement.GuardArmor.isGuard(v)
+                            && com.terraTowns.settlement.SettlementPromotion.isResident(v)) {
+                        other = v;
+                        break;
+                    }
+                }
+                armour.put("othersDontWantArmour", other != null && !other.wantsToPickUp(ironChest));
             }
             s.setTier(tierBefore);
             JobBoard.refresh(level, s);
@@ -927,7 +943,8 @@ public final class JobAudit {
         verdict.put("recruitedInVillage", recruitedInVillage);
         verdict.put("holdsThePost", holdsThePost);
         verdict.put("guardAppointed", appointed);
-        for (String k : new String[]{"nonGuardIgnoresArmour", "putsOnChestplate", "putsOnHelmet", "keepsBetterPiece", "swapsForBetter"}) {
+        for (String k : new String[]{"nonGuardIgnoresArmour", "putsOnChestplate", "putsOnHelmet", "keepsBetterPiece", "swapsForBetter",
+                "wantsBetterArmour", "othersDontWantArmour"}) {
             verdict.put(k, armour.getOrDefault(k, false));
         }
         Map<String, Object> out = new LinkedHashMap<>();

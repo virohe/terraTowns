@@ -5,6 +5,20 @@ Entries before 0.4.8 were reconstructed on 2026-09-27 from DESIGN.md and session
 project had no version control until then. Snapshots of 0.3.13 (partial) and 0.4.0+ are in
 `releases/terra-towns/`.
 
+## 0.4.15 — 2026-10-02
+- **Hamlets settle onto the best ground nearby** (playtest: a hamlet squeezed between ocean and
+  basalt got 2 houses, beside an open field). The site finder picks the area; the builder now
+  checks every spot within 40 blocks and centres the hamlet where the most buildable ground (dry,
+  gentle) lies within its layout radius, nearest first. That hamlet now gets 4 houses, and all 16
+  hamlets on the two test seeds get 4-5. Costs some build time. (`HamletPiece.settle`)
+- **Guard armour is drawn at full size.** It rendered baby-sized: half a chestplate by the waist,
+  the helmet inside the head. Vanilla models default to "baby" and only the entity's own renderer
+  resets that. (`client.VillagerArmorLayer`)
+- **Guards fetch armour**, the way farmers fetch seeds: vanilla's own walk-to-wanted-item, for any
+  piece better than what they wear (within 4 blocks, as for seeds). Worse pieces are left alone.
+  (`mixin.VillagerMixin`, Terra Towns' first mixin)
+- Dev: `runRenderCheck` screenshots a Guard in armour from three sides (docs/testing.md).
+
 ## 0.4.14 — 2026-10-02
 - **Moving the Gym Leader's Desk no longer crashes the game** (playtest). A player's placement
   runs as a queued task, and vanilla registers the desk's workstation only after that task ends;

@@ -71,6 +71,11 @@ public final class VillagerArmorLayer extends RenderLayer<Villager, VillagerMode
         }
         VillagerModel<Villager> model = getParentModel();
         ModelPart root = model.root();
+        // EntityModel.young defaults to TRUE and only the entity's own renderer resets it, so
+        // the stand-in drew every guard's armour baby-sized: a half-scale chestplate down by the
+        // waist and the helmet shrunk inside the head (2026-10-02 playtest screenshot).
+        standIn.young = villager.isBaby();
+        standIn.riding = villager.isPassenger();
         // copyFrom carries scale too, so each scale is set after its copy.
         standIn.head.copyFrom(model.getHead());
         standIn.head.yScale = 10.0F / 8.0F;
