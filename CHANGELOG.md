@@ -5,6 +5,17 @@ Entries before 0.4.8 were reconstructed on 2026-09-27 from DESIGN.md and session
 project had no version control until then. Snapshots of 0.3.13 (partial) and 0.4.0+ are in
 `releases/terra-towns/`.
 
+## 0.4.13 — 2026-10-02
+- **Guards wear armour you give them.** Drop a helmet, chestplate, leggings or boots next to a
+  Guard and it picks the piece up and puts it on, swapping out anything worse (armour points,
+  then toughness) and dropping the old piece. It protects the guard, stays on through saves,
+  and always drops undamaged if the guard dies. (`GuardArmor`)
+- **Armour shows on villagers.** Vanilla has no armour layer for villagers; a new one draws it
+  with vanilla's own armour renderer (trims, dyes, glint and modded armour included), fitted to
+  the villager's taller head and deeper robe. Arm pieces are hidden: villager arms are folded.
+  (`client.VillagerArmorLayer`)
+- Harness: the `guard` check covers pickup, refusing a worse piece and swapping for a better one.
+
 ## 0.4.12 — 2026-10-02
 - **Guard profession** (TT-201, fixes TT-207). The Guard job could unlock but never be staffed;
   villagers can now be Guards, working at the vanilla **target block** (no new block). Placeholder

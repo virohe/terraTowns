@@ -6,6 +6,7 @@ import com.terraTowns.registry.TerraTownsRegistries;
 import net.minecraft.client.renderer.blockentity.SignRenderer;
 import net.minecraft.client.renderer.entity.VillagerRenderer;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.entity.EntityType;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
@@ -32,6 +33,16 @@ public final class TerraTownsClientEvents {
         event.registerEntityRenderer(TerraTownsRegistries.RIVAL.get(), VillagerRenderer::new);
         // The Building Plaque is a vanilla wall sign underneath, drawn by vanilla's sign renderer.
         event.registerBlockEntityRenderer(TerraTownsRegistries.BUILDING_PLAQUE_BE.get(), SignRenderer::new);
+    }
+
+    /** Villagers can wear armour (Guards put on what they're given), so draw it. */
+    @SubscribeEvent
+    public static void onAddLayers(EntityRenderersEvent.AddLayers event) {
+        VillagerRenderer villagers = event.getRenderer(EntityType.VILLAGER);
+        if (villagers != null) {
+            villagers.addLayer(new VillagerArmorLayer(villagers, event.getEntityModels(),
+                    event.getContext().getModelManager()));
+        }
     }
 
     /** Register the top-centre settlement HUD above the rest of the in-game overlays. */

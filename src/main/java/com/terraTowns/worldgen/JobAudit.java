@@ -22,6 +22,7 @@ import com.terraTowns.settlement.SettlementTier;
 import net.minecraft.network.chat.contents.TranslatableContents;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.entity.npc.Villager;
 import net.minecraft.world.entity.npc.VillagerProfession;
 import net.minecraft.world.phys.AABB;
@@ -833,6 +834,7 @@ public final class JobAudit {
                 .getHolder(TerraTownsRegistries.GUARD_POST_POI_KEY)
                 .map(h -> !h.is(net.minecraft.tags.PoiTypeTags.ACQUIRABLE_JOB_SITE)).orElse(false));
 
+        Map<String, Object> armour = new LinkedHashMap<>();
         boolean keptOutOfHamlet = false;
         boolean recruitedInVillage = false;
         boolean holdsThePost = false;
@@ -856,6 +858,11 @@ public final class JobAudit {
             if (idle != null) {
                 idle.setVillagerData(idle.getVillagerData().setProfession(VillagerProfession.NONE));
                 idle.refreshBrain(level);
+                // Armour is a Guard's quirk only: an unemployed villager leaves it lying there.
+                ItemEntity ignored = dropAt(level, idle, net.minecraft.world.item.Items.IRON_CHESTPLATE);
+                armour.put("nonGuardIgnoresArmour", !com.terraTowns.settlement.GuardArmor.tryPickUp(idle)
+                        && ignored.isAlive() && idle.getItemBySlot(net.minecraft.world.entity.EquipmentSlot.CHEST).isEmpty());
+                ignored.discard();
 
                 s.setTier(SettlementTier.HAMLET);
                 keptOutOfHamlet = com.terraTowns.settlement.GuardRecruitment.recruit(level, s) == 0
@@ -869,6 +876,26 @@ public final class JobAudit {
                 JobBoard.refresh(level, s);
                 JobBoard.restaffUnchecked(level, s);
                 appointed = idle.getUUID().equals(s.jobHolder(SettlementJob.GUARD));
+
+                // The Guard's quirk: dropped armour gets picked up and worn, better pieces swapped in.
+                var chest = net.minecraft.world.entity.EquipmentSlot.CHEST;
+                var head = net.minecraft.world.entity.EquipmentSlot.HEAD;
+                ItemEntity iron = dropAt(level, idle, net.minecraft.world.item.Items.IRON_CHESTPLATE);
+                ItemEntity cap = dropAt(level, idle, net.minecraft.world.item.Items.LEATHER_HELMET);
+                com.terraTowns.settlement.GuardArmor.tryPickUp(idle);
+                armour.put("putsOnChestplate", idle.getItemBySlot(chest).is(net.minecraft.world.item.Items.IRON_CHESTPLATE) && !iron.isAlive());
+                armour.put("putsOnHelmet", idle.getItemBySlot(head).is(net.minecraft.world.item.Items.LEATHER_HELMET) && !cap.isAlive());
+                ItemEntity worse = dropAt(level, idle, net.minecraft.world.item.Items.LEATHER_CHESTPLATE);
+                com.terraTowns.settlement.GuardArmor.tryPickUp(idle);
+                armour.put("keepsBetterPiece", idle.getItemBySlot(chest).is(net.minecraft.world.item.Items.IRON_CHESTPLATE) && worse.isAlive());
+                worse.discard();
+                ItemEntity better = dropAt(level, idle, net.minecraft.world.item.Items.DIAMOND_CHESTPLATE);
+                com.terraTowns.settlement.GuardArmor.tryPickUp(idle);
+                boolean ironDropped = !level.getEntitiesOfClass(ItemEntity.class, idle.getBoundingBox().inflate(2.0),
+                        e -> e.getItem().is(net.minecraft.world.item.Items.IRON_CHESTPLATE)).isEmpty();
+                armour.put("swapsForBetter", idle.getItemBySlot(chest).is(net.minecraft.world.item.Items.DIAMOND_CHESTPLATE)
+                        && !better.isAlive() && ironDropped);
+                level.getEntitiesOfClass(ItemEntity.class, idle.getBoundingBox().inflate(2.0)).forEach(ItemEntity::discard);
             }
             s.setTier(tierBefore);
             JobBoard.refresh(level, s);
@@ -877,9 +904,20 @@ public final class JobAudit {
         verdict.put("recruitedInVillage", recruitedInVillage);
         verdict.put("holdsThePost", holdsThePost);
         verdict.put("guardAppointed", appointed);
+        for (String k : new String[]{"nonGuardIgnoresArmour", "putsOnChestplate", "putsOnHelmet", "keepsBetterPiece", "swapsForBetter"}) {
+            verdict.put(k, armour.getOrDefault(k, false));
+        }
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("verdict", verdict);
         return out;
+    }
+
+    /** An item lying at {@code v}'s feet, as if a player had just thrown it there (no pickup delay). */
+    private static ItemEntity dropAt(ServerLevel level, Villager v, net.minecraft.world.item.Item item) {
+        ItemEntity e = new ItemEntity(level, v.getX(), v.getY(), v.getZ(), new net.minecraft.world.item.ItemStack(item));
+        e.setNoPickUpDelay();
+        level.addFreshEntity(e);
+        return e;
     }
 
     private static int giveOneVillagerATrade(ServerLevel level, SettlementData settlement) {
