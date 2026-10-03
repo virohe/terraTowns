@@ -286,6 +286,9 @@ public final class HamletAudit {
         if (JobAudit.enabled()) {
             report.put("jobs", JobAudit.run(server.overworld()));
         }
+        if (VillageAudit.enabled()) {
+            report.put("villages", VillageAudit.run(server.overworld()));
+        }
         write(report);
         maybeHalt(server);
     }

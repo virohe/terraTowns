@@ -42,6 +42,7 @@
   "hud.terra_towns.unnamed": "Unnamed Settlement",
   "message.terra_towns.desk.no_settlement": "This desk is not near any settlement.",
   "message.terra_towns.hamlet_shortfall": "[Terra Towns] Only %1$s of %2$s starting hamlets could be placed — no more suitable coastal sites were found nearby. Additional players beyond %1$s will get a hamlet generated on demand elsewhere.",
+  "message.terra_towns.influence.gained": "You beat the gym of %s: its influence is yours.",
   "message.terra_towns.gym_leader.claimed": "A villager has claimed the Gym Leader's Desk in %s and become its gym leader.",
   "message.terra_towns.desk.locked": "The gym leader here must be defeated before you can use this desk.",
   "message.terra_towns.desk.locked_no_leader": "No villager has claimed this desk as its gym leader yet.",

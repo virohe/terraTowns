@@ -106,6 +106,15 @@ public final class GymChallengeEvents {
                 Component.translatable("message.terra_towns.challenge.won").withStyle(ChatFormatting.GREEN));
         if (firstWin) {
             InfluenceTracker.get(level).grant(player.getUUID(), settlement.id());
+            // A generated village belongs to nobody until its gym is beaten: the first player to
+            // do it holds its influence (0.5; changing hands later is still to be designed).
+            if (settlement.ownerId() == null) {
+                settlement.setOwnerId(player.getUUID());
+                player.sendSystemMessage(Component.translatable("message.terra_towns.influence.gained",
+                        settlement.name() != null ? Component.literal(settlement.name())
+                                : Component.translatable("hud.terra_towns.unnamed"))
+                        .withStyle(ChatFormatting.AQUA));
+            }
             settlement.setGymCleared(true);
             // Beaten, the leader is locked in like a villager you've traded with: it stays gym
             // leader even while its desk is being moved.

@@ -9,7 +9,7 @@ license="All Rights Reserved"
 
 [[mods]]
 modId="terra_towns"
-version="0.4.16"
+version="0.5.0"
 displayName="Cobblemon: Terra Towns"
 #updateJSONURL="https://change.me.example.invalid/updates.json"
 #displayURL="https://change.me.to.your.mods.homepage.example.invalid/"
@@ -50,6 +50,16 @@ config="terra_towns.mixins.json"
 # them, so the mod refuses to load without them. They are still feature-gated in code
 # behind the Integrations flags so individual call sites stay null-safe, but FML will
 # not load the mod unless these mods are present.
+
+# Lithostitched (0.5): injects the village gym (forced count 1) and caps Pokecenters at one per
+# village. AFTER so its pool element types exist when ours are read.
+[[dependencies.terra_towns]]
+    modId="lithostitched"
+    type="required"
+    mandatory=true
+    versionRange="[1.8,)"
+    ordering="AFTER"
+    side="BOTH"
 
 # Cobblemon: badge counts for gym scaling, battle triggers, Pokecenter heal hooks.
 [[dependencies.terra_towns]]

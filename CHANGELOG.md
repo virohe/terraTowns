@@ -5,6 +5,33 @@ Entries before 0.4.8 were reconstructed on 2026-09-27 from DESIGN.md and session
 project had no version control until then. Snapshots of 0.3.13 (partial) and 0.4.0+ are in
 `releases/terra-towns/`.
 
+## 0.5.0 — 2026-10-03
+Stage 0.5, villages. Generated villages join the settlement system.
+- **Every village has exactly one gym.** Terra Towns' gym is added to each village style's houses
+  pool (vanilla plains, desert, savanna, snowy, taiga; BWG forgotten, pumpkin patch, red rock,
+  salem, skyris, swamp) with a Lithostitched forced count of one, so it is laid out on the
+  village's streets like any house. The gym is a PLACEHOLDER (a stone-brick hall,
+  `tools/python/make_gym_template.py`), to be replaced by hand-built ones per village style.
+- **Every gym has a leader.** The gym brings its desk and an unemployed villager standing beside
+  it, who claims the desk and becomes the gym leader through the usual desk upkeep.
+- **Villages are settlements.** A village registers as a village-tier settlement named for its
+  style ("Taiga Village") when its start chunk loads. Villages generated before 0.5 have no gym and
+  are left out. (`VillageRegistry`)
+- **Influence:** a village belongs to nobody until its gym is beaten; the first player to beat it
+  holds its influence. How influence changes hands is still to be designed.
+- **At most one Pokecenter per village.** Cobblemon's own cap of one never held in this pack:
+  Lithostitched generates villages with its own copy of the jigsaw generator, which Cobblemon's
+  mixin doesn't reach, and Cobblemon also adds its Pokecenters in code. Terra Towns now refuses a
+  second Pokecenter at the moment a candidate building is asked how it would connect, in both
+  generators. On the real-pack rig the two villages that had two now have one.
+  (`mixin.LithostitchedJigsawMixin`, `mixin.JigsawPlacerMixin`)
+- **Requires Lithostitched** (already in the pack, for Tectonic).
+- Tests: `VillageAudit` generates villages in several directions and checks one gym, at most one
+  Pokecenter, registration, desk and villager; it runs in the harness (4 vanilla villages) and on
+  the real-pack rig (6, BWG included). `runRenderCheck` now also stands in a village gym for about
+  100 seconds and checks a leader gets bound (the one step that needs villager AI to tick): the
+  gym's villager walked to the desk, took the Gym Leader profession and was bound.
+
 ## 0.4.16 — 2026-10-02
 - **Every starting hamlet has at least 4 houses** (your call; the floor was 3). Houses now pick
   their ground before farms do: biggest-first across everything let the large farms take a

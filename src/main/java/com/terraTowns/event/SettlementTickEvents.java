@@ -7,6 +7,7 @@ import com.terraTowns.rival.RivalPosting;
 import com.terraTowns.settlement.JobBoard;
 import com.terraTowns.settlement.GymDesk;
 import com.terraTowns.settlement.GuardRecruitment;
+import com.terraTowns.settlement.VillageRegistry;
 import com.terraTowns.structure.BuildingRegistry;
 import com.terraTowns.settlement.SettlementData;
 import com.terraTowns.settlement.SettlementJob;
@@ -64,6 +65,7 @@ public final class SettlementTickEvents {
         ServerLevel level = server.overworld();
         SettlementManager manager = SettlementManager.get(level);
         RivalPosting.tick(server, level, manager);
+        VillageRegistry.drain(level);
         for (SettlementData settlement : manager.all()) {
             // Everything below reads the settlement's villagers. With nobody nearby those
             // entities aren't loaded and every entity query comes back empty — which, taken at

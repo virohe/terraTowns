@@ -4,6 +4,8 @@
   "package": "com.terraTowns.mixin",
   "compatibilityLevel": "JAVA_21",
   "mixins": [
+    "JigsawPlacerMixin",
+    "LithostitchedJigsawMixin",
     "VillagerMixin"
   ],
   "client": [],

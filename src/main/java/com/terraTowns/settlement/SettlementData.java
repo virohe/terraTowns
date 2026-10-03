@@ -117,6 +117,12 @@ public final class SettlementData {
      */
     @Nullable
     private UUID ownerId;
+    /**
+     * A generated village's own gym (0.5, {@code VillageRegistry}): it counts as the village's
+     * registered Gym while its desk stands, as a plaque would, since a gym that came with the
+     * village has nobody to hang one.
+     */
+    private boolean generatedGym;
 
     /** Safe on-land spawn/return position for this settlement (player feet), or null. */
     @Nullable
@@ -245,11 +251,23 @@ public final class SettlementData {
         Set<BuildingCategory> all = EnumSet.noneOf(BuildingCategory.class);
         all.addAll(legacyBuildings);
         all.addAll(plaques.values());
+        if (hasBuilding(BuildingCategory.GYM)) {
+            all.add(BuildingCategory.GYM); // a generated village's gym (see generatedGym)
+        }
         return all;
     }
 
     public boolean hasBuilding(BuildingCategory category) {
-        return legacyBuildings.contains(category) || plaques.containsValue(category);
+        return legacyBuildings.contains(category) || plaques.containsValue(category)
+                || (category == BuildingCategory.GYM && generatedGym && deskPos != null);
+    }
+
+    public boolean generatedGym() {
+        return generatedGym;
+    }
+
+    public void setGeneratedGym(boolean generatedGym) {
+        this.generatedGym = generatedGym;
     }
 
     /**
@@ -398,6 +416,9 @@ public final class SettlementData {
         if (ownerId != null) {
             tag.putUUID("OwnerId", ownerId);
         }
+        if (generatedGym) {
+            tag.putBoolean("GeneratedGym", true);
+        }
         if (spawnPoint != null) {
             tag.putLong("SpawnPoint", spawnPoint.asLong());
         }
@@ -459,6 +480,7 @@ public final class SettlementData {
         if (tag.contains("OwnerId")) {
             data.ownerId = tag.getUUID("OwnerId");
         }
+        data.generatedGym = tag.getBoolean("GeneratedGym");
         if (tag.contains("SpawnPoint")) {
             data.spawnPoint = BlockPos.of(tag.getLong("SpawnPoint"));
         }

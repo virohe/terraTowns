@@ -415,6 +415,11 @@ public final class JobAudit {
 
         Map<String, Object> verdict = new LinkedHashMap<>();
         verdict.put("firstDeskClaimableWithoutLeader", claimableWithoutLeader);
+        // Villagers can only claim the desk because it is in vanilla's acquirable-job-site tag;
+        // deleting that tag file (0.5.0 dev) left village gyms leaderless, and nothing else noticed.
+        verdict.put("deskIsAcquirableJobSite", level.registryAccess().registryOrThrow(net.minecraft.core.registries.Registries.POINT_OF_INTEREST_TYPE)
+                .getHolder(TerraTownsRegistries.GYM_LEADERS_DESK_POI_KEY)
+                .map(h -> h.is(net.minecraft.tags.PoiTypeTags.ACQUIRABLE_JOB_SITE)).orElse(false));
         verdict.put("claimantBound", bound);
         verdict.put("bindingSurvivesDeskMove", bindingSurvives);
         verdict.put("newDeskGoesBackToLeader", backToLeader);

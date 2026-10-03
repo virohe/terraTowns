@@ -1,0 +1,31 @@
+{
+  "type": "lithostitched:add_template_pool_elements",
+  "predicate": {
+    "type": "lithostitched:mod_loaded",
+    "mod_id": "biomeswevegone"
+  },
+  "template_pools": [
+    "biomeswevegone:village/forgotten/houses",
+    "biomeswevegone:village/pumpkin_patch/houses",
+    "biomeswevegone:village/red_rock/houses",
+    "biomeswevegone:village/salem/houses",
+    "biomeswevegone:village/skyris/houses",
+    "biomeswevegone:village/swamp/houses"
+  ],
+  "elements": [
+    {
+      "weight": 1,
+      "element": {
+        "element_type": "lithostitched:delegating",
+        "name": "terra_towns:village_gym",
+        "forced_count": 1,
+        "delegate": {
+          "element_type": "minecraft:single_pool_element",
+          "location": "terra_towns:village/gym_placeholder",
+          "processors": "minecraft:empty",
+          "projection": "rigid"
+        }
+      }
+    }
+  ]
+}

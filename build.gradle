@@ -107,6 +107,8 @@ neoForge {
             // registers buildings, forces professions) — only ever set against this run's
             // disposable world. See JobAudit.
             systemProperty 'terratowns.jobAuditMutate', 'true'
+            // Generated villages: one gym each, registered, desk and villager in place (VillageAudit).
+            systemProperty 'terratowns.villageAudit', '4'
         }
 
         data {
@@ -169,6 +171,9 @@ dependencies {
         //
         // Cobblemon (NeoForge) — maven.impactdev.net:
         compileOnly "maven.modrinth:cobblemon:${cobblemon_modrinth_version_id}"
+        // Real Lithostitched in every dev run (harness, render check, client): Terra Towns' gym
+        // modifiers and capped village pools need its types. Not bundled into the jar.
+        localRuntime "maven.modrinth:lithostitched:${lithostitched_modrinth_version_id}"
         // Cobblemon's classes reference Kotlin runtime markers (e.g. KMappedMarker) that javac
         // needs on the compile classpath to resolve, even though nothing here calls Kotlin code
         // directly. Compile-only: "Kotlin for NeoForge" supplies the real runtime jar in-game.
