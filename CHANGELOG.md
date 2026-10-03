@@ -5,6 +5,12 @@ Entries before 0.4.8 were reconstructed on 2026-09-27 from DESIGN.md and session
 project had no version control until then. Snapshots of 0.3.13 (partial) and 0.4.0+ are in
 `releases/terra-towns/`.
 
+## 0.4.16 — 2026-10-02
+- **Every starting hamlet has at least 4 houses** (your call; the floor was 3). Houses now pick
+  their ground before farms do: biggest-first across everything let the large farms take a
+  cramped site first. Checked on 24 hamlets over three seeds: 4-5 houses and 2-4 farms each.
+  The harness and the real-pack rig fail any hamlet under 4.
+
 ## 0.4.15 — 2026-10-02
 - **Hamlets settle onto the best ground nearby** (playtest: a hamlet squeezed between ocean and
   basalt got 2 houses, beside an open field). The site finder picks the area; the builder now

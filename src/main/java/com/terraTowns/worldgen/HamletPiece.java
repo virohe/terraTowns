@@ -237,11 +237,13 @@ public final class HamletPiece {
      */
     private static final int BACKFILL_MAX_DEPTH = 12;
     /**
-     * Fewer houses than this and the hamlet is rebuilt once with the bury/stilt caps relaxed by
-     * one. A player claims one of these as their starting settlement, so a site rough enough to
-     * seat only one or two houses is a worse outcome than a foundation a block deeper.
+     * The hard minimum (user's call, 2026-10-02; 3 until 0.4.16). Houses are placed before farms
+     * so they get first pick of the ground, and fewer than this triggers one retry with the
+     * bury/stilt caps relaxed by one. A player claims one of these as their starting
+     * settlement, so a thin hamlet is a worse outcome than a foundation a block deeper. The
+     * harness and the real-pack rig fail any hamlet below it.
      */
-    private static final int MIN_HOUSES = 3;
+    private static final int MIN_HOUSES = 4;
     /** Upper bound on villagers spawned from a hamlet's {@code villagers} jigsaws. */
     private static final int MAX_VILLAGERS = 10;
 
@@ -420,8 +422,13 @@ public final class HamletPiece {
         while (farms.size() < farmCount) {
             farms.add(pick(random.nextBoolean() ? CROP_FARMS : ANIMAL_PENS));
         }
+        // Houses first, each group biggest-first. Pure biggest-first (until 0.4.16) let the 13x9
+        // large farms claim the ground before any house: a playtest hamlet hemmed in by ocean and
+        // basalt got two farms and two houses. Farms are what a cramped site can spare.
+        Comparator<String> biggestFirst = Comparator.comparingInt(this::footprintArea).reversed();
+        build.sort(biggestFirst);
+        farms.sort(biggestFirst);
         build.addAll(farms);
-        build.sort(Comparator.comparingInt(this::footprintArea).reversed());
 
         int houses = 0;
         int placedFarms = 0;
