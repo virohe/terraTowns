@@ -7,6 +7,7 @@ import com.terraTowns.settlement.JobBoard;
 import com.terraTowns.settlement.GymDesk;
 import com.terraTowns.settlement.GuardRecruitment;
 import com.terraTowns.settlement.VillageRegistry;
+import com.terraTowns.structure.BuildingDetection;
 import com.terraTowns.structure.BuildingRegistry;
 import com.terraTowns.settlement.SettlementData;
 import com.terraTowns.settlement.SettlementJob;
@@ -70,6 +71,9 @@ public final class SettlementTickEvents {
             }
             if (scans % PLAQUE_CHECK_EVERY == 0) {
                 BuildingRegistry.revalidate(level, settlement);
+            }
+            if (BuildingDetection.tick(level, settlement)) {
+                manager.setDirty();
             }
             bindGymLeaderIfNeeded(server, level, manager, settlement);
             GymDesk.tick(level, settlement);

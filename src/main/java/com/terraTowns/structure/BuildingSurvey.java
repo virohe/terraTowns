@@ -56,6 +56,8 @@ public final class BuildingSurvey {
     private static final int OPEN_AIR_RADIUS = 6;
     /** Beds needed for an Inn / Tavern — enough that an ordinary house doesn't qualify. */
     public static final int INN_MIN_BEDS = 3;
+    /** Beds needed for Housing (0.5.2): one. */
+    public static final int HOUSING_MIN_BEDS = 1;
 
     private BuildingSurvey() {
     }
@@ -76,6 +78,14 @@ public final class BuildingSurvey {
             Map<BlockPos, BlockState> left = new java.util.HashMap<>(cells);
             left.keySet().removeAll(claimed);
             return new Result(enclosed, left, start, space);
+        }
+
+        /** The box around the room and its walls: the building, on the settlement map. */
+        public net.minecraft.world.level.levelgen.structure.BoundingBox box() {
+            java.util.List<BlockPos> all = new java.util.ArrayList<>(space);
+            all.addAll(cells.keySet());
+            return net.minecraft.world.level.levelgen.structure.BoundingBox.encapsulatingPositions(all)
+                    .orElse(new net.minecraft.world.level.levelgen.structure.BoundingBox(start));
         }
 
         /** Bed heads in the room. */
@@ -193,7 +203,15 @@ public final class BuildingSurvey {
         if (category == BuildingCategory.INN_TAVERN) {
             return room.beds().size() >= INN_MIN_BEDS;
         }
+        if (category == BuildingCategory.HOUSING) {
+            return room.beds().size() >= HOUSING_MIN_BEDS;
+        }
         return !backing(level, room, category).isEmpty();
+    }
+
+    /** Is {@code category} counted in beds rather than in blocks of its own? */
+    public static boolean bedBased(BuildingCategory category) {
+        return category == BuildingCategory.INN_TAVERN || category == BuildingCategory.HOUSING;
     }
 
     /**
@@ -216,7 +234,7 @@ public final class BuildingSurvey {
      */
     public static Set<BlockPos> backing(ServerLevel level, Result room, BuildingCategory category) {
         Set<BlockPos> out = new HashSet<>();
-        if (category == BuildingCategory.INN_TAVERN) {
+        if (bedBased(category)) {
             out.addAll(room.beds());
             return out;
         }
@@ -229,13 +247,23 @@ public final class BuildingSurvey {
         return out;
     }
 
+    /**
+     * Workplaces no settlement job uses (0.5.2): with these every vanilla workstation belongs to
+     * some building type. They unlock no job and no step up asks for them.
+     */
+    private static final Map<BuildingCategory, List<VillagerProfession>> WORKPLACES = Map.of(
+            BuildingCategory.LIBRARY, List.of(VillagerProfession.LIBRARIAN),
+            BuildingCategory.TEMPLE, List.of(VillagerProfession.CLERIC));
+
     /** The blocks, any one of which lets a room qualify as {@code category}. */
     public static Set<Block> requiredBlocks(ServerLevel level, BuildingCategory category) {
         Set<Block> out = new HashSet<>();
         SettlementJob job = JOB_BUILDINGS.get(category);
-        if (job != null) {
+        List<VillagerProfession> professions = job != null ? job.eligibleProfessions()
+                : WORKPLACES.getOrDefault(category, List.of());
+        if (!professions.isEmpty()) {
             Registry<PoiType> pois = level.registryAccess().registryOrThrow(Registries.POINT_OF_INTEREST_TYPE);
-            for (VillagerProfession profession : job.eligibleProfessions()) {
+            for (VillagerProfession profession : professions) {
                 pois.holders()
                         .filter(h -> profession.heldJobSite().test(h))
                         .forEach(h -> h.value().matchingStates().forEach(s -> out.add(s.getBlock())));

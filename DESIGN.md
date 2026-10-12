@@ -99,9 +99,9 @@ re-surveyed every 20 s and immediately before any promotion checklist is evaluat
 Known limits: rooms wider than 16 / taller than 10, and walls two thick, fall back to the
 outdoor survey; any roofed pocket (a cave) counts as a room. Harness: `jobs.plaques.verdict`.
 
-**0.5.2 plan: auto-detected buildings and the promotion ladder** (user's decisions, 2026-10-12;
-the numbers are proposals, to be tuned in playtests). Generated villages carry no plaques, so their
-buildings never registered. Each structure piece of a village is classified from what it holds:
+**0.5.2: auto-detected buildings and the promotion ladder** (user's decisions, 2026-10-12;
+the numbers to be tuned in playtests; `structure.BuildingDetection`, `SettlementPromotion`).
+Generated villages carry no plaques, so until 0.5.2 their buildings never registered. Each structure piece of a village is classified from what it holds:
 a piece with a workstation is typed by that workstation, one with beds only is **Housing** (a new,
 mandatory type), and streets and decorations are ignored. Building categories (Inn, Market Stall,
 Smithy…) stay, and workstation types sit alongside them, on purpose: similar workstations can
@@ -109,13 +109,15 @@ share a building. Plaques stay for player-built structures. In a spawn hamlet, a
 registers houses as Housing only, for consistency (its villagers are unemployed but for a few
 farmers). Each step up asks for something different:
 
-| Step | Buildings | Workstations | Population / beds |
+| Step | Buildings | Workstations | Population |
 |---|---|---|---|
-| Hamlet → Village | Gym, Housing ×6, Farm Plots, Smithy | none (early populations are too small to staff them) | 10 / 12 |
-| Village → Town | the village's + Pokécentre, Pokémart, Inn, Market Stall, Warehouse, Guard Post; Housing ×10; at least 3 built since it became a village | staffed: 3 farmers, 2 smiths (armorer, weaponsmith or toolsmith), 1 guard, 1 merchant; 6 distinct types staffed | 20 / 20 |
-| Town → City (2.0) | ×2 of Inn, Market Stall, Warehouse, Guard Post, Smithy; Battle Facility, Train Station; Housing ×20 | 6 farmers; 10 distinct types staffed | 40 / 40 |
+| Hamlet → Village | Gym, Inn, Housing ×6, Farm Plots, Smithy | none (early populations are too small to staff them) | 10 |
+| Village → Town | the village's + Pokécentre, Pokémart, Market Stall, Warehouse, Guard Post; Housing ×10; at least 3 built since it became a village | staffed: 3 farmers, 2 smiths (armorer, weaponsmith or toolsmith), 1 guard, 1 merchant; 6 distinct types staffed | 20 |
+| Town → City (2.0) | ×2 of Inn, Market Stall, Warehouse, Guard Post, Smithy; Battle Facility, Train Station; Housing ×20 | 6 farmers; 10 distinct types staffed | 40 |
 
-The gym and a rival win stay part of every step.
+**Beds: always about 15% more beds than villagers** (user, 2026-10-12): every step needs
+beds ≥ 1.15 × the larger of the step's minimum population and the settlement's actual population,
+rounded up (12, 23 and 46 at the minimums). The gym and a rival win stay part of every step.
 
 **v2.5 "blueprint" model:** plaques are augmented by Create-schematic-style blueprints and
 minimum-size validation (farm-plot area, bed/housing counts, guard-post size). The
@@ -245,8 +247,8 @@ a single place.
 | **0.2** | Checklist | Gym Leader's Desk block entity + screen; live town-progress checklist; network sync of settlement/influence state. |
 | **0.3** | Town founding | Found a town from scratch (sparse/missing villages): all 6 categories + gym leader + housing/beds/farms; village→town upgrade flow. |
 | **0.4** | Job assignment | Villager job unlocks (Farmer, Smith, Guard, Merchant, Builder) after gym clear; rival NPC pool that scales across settlements. *(0.4.0: unlock + staffing rules — `SettlementJob`, `JobBoard`, `/terraTowns jobs`. 0.4.1: rival pool — `RivalPool`, `RivalPosting`, `RivalEntity`; one rival per player, rank scaling with influence breadth + defeat history. 0.4.4: placement rule rebuilt on vanilla's entrance geometry, vanilla well as the hamlet centre. 0.4.5: survival recipes for the desk / plaque / route marker; one plaque registers one building; vanilla creative-style desk UI with each job's workstations. 0.4.6: plaque = wall sign naming its building, workstation-based survey with claims; gym succession re-locks the desk; beaten rival stays away a day and each promotion needs a rival win at that tier; hamlets fell whole trees, path into the well plaza, and place lamps until no ground is dark. 0.4.7: one plaque per building (a building owns all its workstations); market stall / guard post and their jobs open at village tier; a registered gym is required for every promotion; walkways routed by A* around pieces; plot clearing can no longer touch placed pieces; 3-8 path-side lamps instead of full coverage; dedicated servers build starting hamlets one per tick. 0.4.8: one Gym Leader's Desk per settlement (a second is inert), the bound leader keeps its binding when the desk is moved and is handed the new desk first, a beaten leader is locked in like a traded villager (GymDesk); cramped sites rejected by the finder; tree clear fells modded growth (stems, petal blocks, fungi) and never cuts a giant partway; pens and farms level their interiors and bury at most 1; /terraTowns assign <player> <index>.)* |
-| **0.5** | Villages | Generated villages join the system: every village (vanilla's five styles and BWG's six) generates exactly one gym, injected into its houses pool with a Lithostitched forced count so it sits on the streets; the gym brings its desk and the village spawns its leader; the village registers as an unowned village-tier settlement, and the first player to beat its gym holds its influence. Pok&eacute;centers capped at one per village. *(0.5.0: placeholder gym, `VillageRegistry`, `VillageAudit`. 0.5.1: gym leaders are appointed, never recruited: right-click an unemployed villager holding a desk, or an unowned village spawns one; no villager can claim a desk; leaders locked from appointment; the post falls vacant only on death; settlements have footprints, `GymDesk`.)* |
-| **0.6** | Story | The opening flow (user's design, 2026-10-02): the Professor at your hamlet's well sends you to the nearest village, gives you your starter there, and walks you through the gym, the desk and the town upgrade; the desk recipe stays locked until your continent's villages are connected. Dialogue screens first, camera scenes later. |
+| **0.5** | Villages | Generated villages join the system: every village (vanilla's five styles and BWG's six) generates exactly one gym, injected into its houses pool with a Lithostitched forced count so it sits on the streets; the gym brings its desk and the village spawns its leader; the village registers as an unowned village-tier settlement, and the first player to beat its gym holds its influence. Pok&eacute;centers capped at one per village. *(0.5.0: placeholder gym, `VillageRegistry`, `VillageAudit`. 0.5.3: the desk's settlement map (tier-titled; No outline / Buildings with a type legend / Sections), Progress tab; released with 0.5.2. 0.5.2: generated buildings detected (by workstation; beds only = Housing), Housing/Library/Temple types, the new promotion ladder. 0.5.1: gym leaders are appointed, never recruited: right-click an unemployed villager holding a desk, or an unowned village spawns one; no villager can claim a desk; leaders locked from appointment; the post falls vacant only on death; settlements have footprints, `GymDesk`.)* |
+| **0.6** | Story | The opening flow (user's design, 2026-10-02): the Professor at your hamlet's well sends you to the nearest village, gives you your starter there, and walks you through the gym, the desk and the town upgrade; the desk recipe stays locked until your continent's villages are connected. Dialogue screens first, camera scenes later. Also the load-time pass, once the 0.5 features are complete (user, 2026-10-12): the starting-hamlet site search and builds spread across ticks (TT-210; 44-55 s and 30-42 s per hamlet in the real pack). |
 | **0.7** | Train station | Stations only from the Professor (one per town promotion; Create's station recipe removed) and placeable only near a town (`CreateHook`). |
 | **1.0** | Release | Full hamlet→village→town loop; routes (foot path + markers → rail); biome-typed gyms; Cobblemon battle/heal/badge integration solid. |
 | **1.5** | Animation | GeckoLib trainer overhaul: pokeball throws, fear reactions, full villager-as-trainer behaviour. |

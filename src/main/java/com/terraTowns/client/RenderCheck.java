@@ -74,7 +74,30 @@ public final class RenderCheck {
             Screenshot.grab(mc.gameDirectory, "rendercheck-gym.png",
                     mc.getMainRenderTarget(), msg -> TerraTowns.LOGGER.info("[render-check] {}", msg.getString()));
         }
-        if (ticks == village + VILLAGE_WAIT + 40) {
+        // Part three (0.5.3): that village's desk, open on the settlement map: the buildings
+        // outlined with the legend open, then the map alone.
+        int desk = village + VILLAGE_WAIT + 40;
+        if (ticks == desk && gymVillage != null) {
+            mc.getSingleplayerServer().execute(() -> {
+                ServerPlayer player = mc.getSingleplayerServer().getPlayerList().getPlayers().get(0);
+                com.terraTowns.network.TerraTownsNetwork.sendDeskSync(player, player.serverLevel(), gymVillage);
+            });
+        }
+        if (ticks == desk + 40 && mc.screen instanceof com.terraTowns.client.screen.GymLeadersDeskScreen screen) {
+            screen.showMapForCheck(true);
+        }
+        if (ticks == desk + 60) {
+            Screenshot.grab(mc.gameDirectory, "rendercheck-map-buildings.png",
+                    mc.getMainRenderTarget(), msg -> TerraTowns.LOGGER.info("[render-check] {}", msg.getString()));
+        }
+        if (ticks == desk + 70 && mc.screen instanceof com.terraTowns.client.screen.GymLeadersDeskScreen screen) {
+            screen.showMapForCheck(false);
+        }
+        if (ticks == desk + 90) {
+            Screenshot.grab(mc.gameDirectory, "rendercheck-map-plain.png",
+                    mc.getMainRenderTarget(), msg -> TerraTowns.LOGGER.info("[render-check] {}", msg.getString()));
+        }
+        if (ticks == desk + 110) {
             TerraTowns.LOGGER.info("[render-check] done");
             mc.stop();
         }

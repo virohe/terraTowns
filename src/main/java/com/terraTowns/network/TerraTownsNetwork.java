@@ -74,6 +74,9 @@ public final class TerraTownsNetwork {
         registrar.playToClient(SyncJobBoardPacket.TYPE, SyncJobBoardPacket.STREAM_CODEC,
                 (payload, context) -> context.enqueueWork(
                         () -> com.terraTowns.client.ClientPacketHandlers.handleJobBoard(payload)));
+        registrar.playToClient(SyncSettlementMapPacket.TYPE, SyncSettlementMapPacket.STREAM_CODEC,
+                (payload, context) -> context.enqueueWork(
+                        () -> com.terraTowns.client.ClientPacketHandlers.handleMap(payload)));
     }
 
     // --- send helpers (server side) ----------------------------------------
@@ -88,6 +91,10 @@ public final class TerraTownsNetwork {
      * promotion checklist rendered in the Overview tab.
      */
     public static void sendDeskSync(ServerPlayer player, ServerLevel level, SettlementData data) {
+        // What the desk shows is what the settlement has right now (0.5.2).
+        if (com.terraTowns.structure.BuildingDetection.refreshAll(level, data)) {
+            com.terraTowns.settlement.SettlementManager.get(level).setDirty();
+        }
         PacketDistributor.sendToPlayer(player, new SyncSettlementPacket(data, true));
         SettlementPromotion.Eval eval = SettlementPromotion.evaluate(level, data);
         List<SyncPromotionChecklistPacket.Entry> entries = new ArrayList<>();
@@ -97,6 +104,8 @@ public final class TerraTownsNetwork {
         PacketDistributor.sendToPlayer(player, new SyncPromotionChecklistPacket(
                 data.id(), eval.to() == null ? "" : eval.to().id(), entries));
         sendJobBoard(player, level, data);
+        PacketDistributor.sendToPlayer(player, new SyncSettlementMapPacket(data.id(),
+                com.terraTowns.settlement.SettlementMap.build(level, data)));
     }
 
     /**

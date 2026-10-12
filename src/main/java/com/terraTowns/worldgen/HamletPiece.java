@@ -307,6 +307,8 @@ public final class HamletPiece {
      * a lamp set beside a farm tore up the corner of it.
      */
     private List<int[]> placedFootprints = List.of();
+    /** Each house placed, as built (0.5.2): the settlement registers them as Housing. */
+    private final List<BoundingBox> houseBoxes = new ArrayList<>();
     /**
      * Live bury/stilt caps. Normally {@link #MAX_BURY}/{@link #MAX_STILT}; raised by one for a
      * single retry pass when a site is too rough to seat a believable hamlet (see
@@ -330,7 +332,7 @@ public final class HamletPiece {
      * A built hamlet: a safe, on-land spawn position at its centre (feet on solid ground), and
      * the box around everything placed (the settlement's footprint, 0.5.1).
      */
-    public record Built(BlockPos spawn, BoundingBox bounds) {
+    public record Built(BlockPos spawn, BoundingBox bounds, List<BoundingBox> houses) {
     }
 
     /** Build the hamlet near {@code origin}. */
@@ -491,7 +493,7 @@ public final class HamletPiece {
                 hamletCenter, houses, placedFarms, villagers, candidates.size());
         HamletAudit.hamlet(level, hamletCenter, PLOT_RADIUS + ROUTE_REACH, houses, placedFarms, villagers,
                 candidates.size(), lighting);
-        return new Built(spawn, bounds(footprints, spawn));
+        return new Built(spawn, bounds(footprints, spawn), List.copyOf(houseBoxes));
     }
 
     /** Everything placed, from the spawn's level down 16 to the tallest roof. */
@@ -636,6 +638,10 @@ public final class HamletPiece {
                     placed.minX() + sizeR.getX() - 1, placed.minZ() + sizeR.getZ() - 1,
                     placed.baseY() + placed.sizeY()});
             villagerSpots.addAll(placed.villagerSpots());
+            if (path.contains("_house_")) {
+                houseBoxes.add(new BoundingBox(placed.minX(), placed.baseY(), placed.minZ(),
+                        placed.minX() + sizeR.getX() - 1, placed.baseY() + placed.sizeY(), placed.minZ() + sizeR.getZ() - 1));
+            }
 
             if (layPath && placed.approach() != null) {
                 layPath(placed.approach().getX(), placed.approach().getZ(),

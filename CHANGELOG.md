@@ -5,6 +5,60 @@ Entries before 0.4.8 were reconstructed on 2026-09-27 from DESIGN.md and session
 project had no version control until then. Snapshots of 0.3.13 (partial) and 0.4.0+ are in
 `releases/terra-towns/`.
 
+## 0.5.3 — 2026-10-12
+The desk gets a map of the settlement (user's design, 2026-10-12). Released together with 0.5.2,
+which was not released on its own.
+- **Settlement map.** The desk's Sections and Heat map tabs are merged into one map tab titled
+  for the settlement's tier ("Village Map"): a bird's-eye view of the settlement's footprint in
+  vanilla's map colours and shading, inside a map frame, scaled to fit. Drawn on the server when the
+  desk opens, from loaded chunks only (anything else is blank parchment). The desk and you are
+  marked on it. (`SettlementMap`, `client.screen.SettlementMapView`)
+- **Sub-tabs:** *No outline* (the map alone), *Buildings* (every plaque building and detected
+  structure outlined and tinted in its type's colour; hover one for its type, beds, workstations
+  and whether it came with the village or has a plaque) and *Sections* (the named districts, as
+  before; drawing them on the map comes later).
+- **Legend** (Buildings): a toggleable panel listing each building type on the map with its colour
+  and count, plus unrecognised structures; click an entry to hide or show that type.
+- **Progress tab:** every requirement for the next tier in two columns. The Overview shows a
+  one-line summary instead, and its building list shows counts ("Housing ×9").
+- Plaques now record their building's room, for the map; plaques from before 0.5.2 show as a small
+  square at the plaque.
+- Tests: `runRenderCheck` opens a village's desk on the map tab and screenshots it with buildings
+  and the legend, and plain.
+
+## 0.5.2 — 2026-10-12
+Generated buildings register themselves, and the promotion ladder is rebuilt around buildings,
+housing and staffed trades (user's decisions, 2026-10-12).
+- **Village buildings are detected.** A generated village's pieces are recorded when it
+  registers (streets, lamp posts, decorations and the villager/animal spawn pieces left out), and
+  each is typed by what it holds, by the same table plaques use: a smithing table makes a Smithy,
+  a composter or barrel Farm Plots, a healing machine a Pokécentre, the gym's desk the Gym. A
+  piece with only beds is **Housing**; one with neither (the village centre, an animal pen) is
+  nothing. Re-checked a few at a time every scan (a village in about 20 s), and all at once when
+  the desk opens or a gym is challenged, so breaking a workstation re-types its building.
+  Villages registered before 0.5.2 get their pieces the next time their start chunk loads.
+  (`BuildingDetection`)
+- **Spawn-hamlet houses register as Housing**, and only ever as Housing: a hamlet's villagers are
+  unemployed but for a few farmers. Farms and the rest still take plaques.
+- **A plaque inside a detected building takes it over**: the plaque's building counts, the
+  detected one doesn't, so nothing counts twice.
+- **New building types: Housing** (any bed; plaques can name it too), **Library** (lectern) and
+  **Temple** (brewing stand), so every vanilla workstation belongs to some building. Building types
+  and workstation types sit side by side: a Smithy may hold a smithing table and a grindstone.
+- **The promotion ladder:**
+  - Hamlet → Village: Gym, Inn, Farm Plots, Smithy, Housing ×6, 10 villagers. No workstations:
+    early villages are too small to staff every trade. (Replaces "7 villagers with jobs".)
+  - Village → Town: the village's buildings plus Pokécentre, Pokémart, Market Stall, Warehouse
+    and Guard Post; Housing ×10; 3 buildings registered since it became a village; 3 farmers,
+    2 smiths, 1 guard and 1 merchant working, 6 different trades in all; 20 villagers.
+  - Every step: 15% more beds than villagers (the larger of the step's minimum and the actual
+    population), and a rival win. Town → City stays for 2.0.
+  - Villagers and beds are counted on the settlement's footprint.
+- Tests: harness stage `buildings` (bed rule, hamlet houses as Housing, a staged structure going
+  from nothing to Housing to Smithy, plaque override, "new buildings", both checklists);
+  `VillageAudit` checks each village's gym and houses are detected (`buildingsDetected`) and
+  reports its building types and anything unrecognised.
+
 ## 0.5.1 — 2026-10-12
 Gym leaders are appointed, never recruited (playtest: a village gym's desk was claimed by the
 wrong villager, who then couldn't get through the gym's door, so the gym had nobody to challenge).

@@ -4,6 +4,8 @@ import com.terraTowns.influence.InfluenceTracker;
 import com.terraTowns.rival.RivalPool;
 import com.terraTowns.settlement.JobBoard;
 import com.terraTowns.settlement.GymDesk;
+import com.terraTowns.settlement.SettlementPromotion;
+import com.terraTowns.structure.BuildingDetection;
 import com.terraTowns.settlement.SettlementData;
 import com.terraTowns.settlement.SettlementJob;
 import com.terraTowns.settlement.SettlementManager;
@@ -81,6 +83,7 @@ public final class JobAudit {
         // Runs first, while no settlement has any legacy registrations for it to hide behind.
         report.put("plaques", plaques(level, manager));
         report.put("gymDesk", gymDesk(level, manager));
+        report.put("buildings", buildings(level, manager));
         report.put("hamletAssign", hamletAssign(manager));
         report.put("treeFelling", treeFelling(level, manager));
         report.put("stonePath", stonePath(level, manager));
@@ -463,6 +466,160 @@ public final class JobAudit {
 
     private static Villager villagerAt(ServerLevel level, BlockPos pos) {
         return net.minecraft.world.entity.EntityType.VILLAGER.spawn(level, pos, net.minecraft.world.entity.MobSpawnType.EVENT);
+    }
+
+    /**
+     * Building detection and the promotion ladder (0.5.2): hamlet houses register as Housing,
+     * what a structure holds decides its type, a plaque inside one takes over, the bed rule, and
+     * the checklists asking for what each step should.
+     */
+    private static Map<String, Object> buildings(ServerLevel level, SettlementManager manager) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        Map<String, Object> verdict = new LinkedHashMap<>();
+
+        // Beds: 15% over the larger of the step's minimum and the actual population, rounded up.
+        verdict.put("bedsFifteenPercentOver", SettlementPromotion.bedsNeeded(10, 10) == 12
+                && SettlementPromotion.bedsNeeded(20, 20) == 23 && SettlementPromotion.bedsNeeded(40, 40) == 46
+                && SettlementPromotion.bedsNeeded(20, 30) == 35 && SettlementPromotion.bedsNeeded(10, 4) == 12);
+
+        // Every spawn hamlet's houses were detected, and each is Housing.
+        List<SettlementData> hamlets = manager.all().stream().filter(x -> manager.isSpawnHamlet(x.id())).toList();
+        int houses = 0;
+        int housing = 0;
+        for (SettlementData h : hamlets) {
+            houses += h.structures().size();
+            housing += h.buildingCount(BuildingCategory.HOUSING);
+        }
+        verdict.put("hamletHousesAreHousing", housing + " / " + houses);
+        verdict.put("hamletHousesRecorded", houses >= 4 * hamlets.size());
+        out.put("hamletHouses", houses);
+
+        SettlementData h = hamlets.get(0);
+        SettlementData.Structure house = h.structures().get(0);
+        // A hamlet house stays Housing whatever is put in it.
+        BlockPos inside = openFloorIn(level, house.box());
+        boolean housingOnly = false;
+        if (inside != null) {
+            level.setBlock(inside, Blocks.SMITHING_TABLE.defaultBlockState(), 3);
+            BuildingDetection.classify(level, h, house);
+            housingOnly = house.type() == BuildingCategory.HOUSING;
+            level.setBlock(inside, Blocks.AIR.defaultBlockState(), 3);
+            BuildingDetection.classify(level, h, house);
+        }
+        verdict.put("hamletHouseStaysHousing", housingOnly);
+
+        // A generated structure: nothing, then a bed (Housing), then a workstation (its building).
+        BlockPos o = h.center().above(110);
+        shell(level, o, o.offset(6, 4, 6));
+        net.minecraft.world.level.levelgen.structure.BoundingBox box =
+                new net.minecraft.world.level.levelgen.structure.BoundingBox(o.getX(), o.getY(), o.getZ(),
+                        o.getX() + 6, o.getY() + 4, o.getZ() + 6);
+        SettlementData.Structure st = new SettlementData.Structure(box, "terra_towns:audit/test", false);
+        h.structures().add(st);
+        int smithiesBefore = h.buildingCount(BuildingCategory.SMITHY);
+        BuildingDetection.classify(level, h, st);
+        boolean emptyIsNothing = st.classified() && st.type() == null && !st.counts();
+        BlockPos foot = o.offset(2, 1, 3);
+        level.setBlock(foot, Blocks.RED_BED.defaultBlockState()
+                .setValue(net.minecraft.world.level.block.BedBlock.PART, net.minecraft.world.level.block.state.properties.BedPart.FOOT)
+                .setValue(net.minecraft.world.level.block.HorizontalDirectionalBlock.FACING, net.minecraft.core.Direction.NORTH), 2);
+        level.setBlock(foot.north(), Blocks.RED_BED.defaultBlockState()
+                .setValue(net.minecraft.world.level.block.BedBlock.PART, net.minecraft.world.level.block.state.properties.BedPart.HEAD)
+                .setValue(net.minecraft.world.level.block.HorizontalDirectionalBlock.FACING, net.minecraft.core.Direction.NORTH), 2);
+        BuildingDetection.classify(level, h, st);
+        boolean bedIsHousing = st.type() == BuildingCategory.HOUSING && st.beds() == 1;
+        BlockPos table = o.offset(4, 1, 4);
+        level.setBlock(table, Blocks.SMITHING_TABLE.defaultBlockState(), 3);
+        BuildingDetection.classify(level, h, st);
+        boolean workstationWins = st.type() == BuildingCategory.SMITHY && st.workstations().contains("toolsmith")
+                && h.buildingCount(BuildingCategory.SMITHY) == smithiesBefore + 1;
+
+        // A plaque inside takes over: the structure stops counting, the plaque's building counts.
+        BlockPos plaquePos = o.offset(1, 2, 1);
+        h.setPlaque(plaquePos, BuildingCategory.SMITHY, java.util.Set.of(), o.offset(3, 1, 3), box);
+        BuildingDetection.classify(level, h, st);
+        boolean plaqueOverrides = st.plaqued() && !st.counts() && h.buildingCount(BuildingCategory.SMITHY) == smithiesBefore + 1;
+        h.removePlaque(plaquePos);
+        BuildingDetection.classify(level, h, st);
+        boolean countsAgain = st.counts() && h.buildingCount(BuildingCategory.SMITHY) == smithiesBefore + 1;
+
+        // Taken out again: nothing.
+        level.setBlock(table, Blocks.AIR.defaultBlockState(), 3);
+        level.setBlock(foot.north(), Blocks.AIR.defaultBlockState(), 2);
+        level.setBlock(foot, Blocks.AIR.defaultBlockState(), 2);
+        BuildingDetection.classify(level, h, st);
+        boolean emptiedIsNothing = st.type() == null;
+        h.structures().remove(st);
+        for (BlockPos p : BlockPos.betweenClosed(o, o.offset(6, 4, 6))) {
+            level.setBlock(p, Blocks.AIR.defaultBlockState(), 3);
+        }
+        verdict.put("emptyStructureIsNothing", emptyIsNothing);
+        verdict.put("bedOnlyIsHousing", bedIsHousing);
+        verdict.put("workstationDecidesType", workstationWins);
+        verdict.put("plaqueInsideOverrides", plaqueOverrides);
+        verdict.put("countsAgainWithoutPlaque", countsAgain);
+        verdict.put("emptiedIsNothing", emptiedIsNothing);
+
+        // "New buildings": plaques registered at village tier or above.
+        com.terraTowns.settlement.SettlementTier tierBefore = h.tier();
+        BlockPos oldPlaque = o.offset(0, -1, 0);
+        h.setPlaque(oldPlaque, BuildingCategory.FARM_PLOTS, java.util.Set.of(), oldPlaque, null);
+        h.setTier(com.terraTowns.settlement.SettlementTier.VILLAGE);
+        BlockPos newPlaque = o.offset(0, -2, 0);
+        h.setPlaque(newPlaque, BuildingCategory.WAREHOUSE, java.util.Set.of(), newPlaque, null);
+        boolean newCounted = h.buildingsRegisteredSince(com.terraTowns.settlement.SettlementTier.VILLAGE) == 1;
+
+        // The town checklist: staffed workers, trades, new buildings, the Pokecentre.
+        List<SettlementPromotion.Requirement> town = SettlementPromotion.evaluate(level, h).requirements();
+        boolean townAsks = countKey(town, "promo.terra_towns.req.workers") == 4
+                && countKey(town, "promo.terra_towns.req.trades") == 1
+                && countKey(town, "promo.terra_towns.req.new_buildings") == 1
+                && namesBuilding(town, "promo.terra_towns.req.building", "pokecenter")
+                && namesBuilding(town, "promo.terra_towns.req.building_count", "housing")
+                && !namesBuilding(town, "promo.terra_towns.req.building", "battle_facility");
+        h.removePlaque(oldPlaque);
+        h.removePlaque(newPlaque);
+        h.setTier(tierBefore);
+
+        // The village checklist: buildings (Inn included) and Housing, no workstations.
+        List<SettlementPromotion.Requirement> village = SettlementPromotion.evaluate(level, h).requirements();
+        boolean villageAsks = namesBuilding(village, "promo.terra_towns.req.building", "inn_tavern")
+                && namesBuilding(village, "promo.terra_towns.req.building", "gym")
+                && namesBuilding(village, "promo.terra_towns.req.building_count", "housing")
+                && countKey(village, "promo.terra_towns.req.workers") == 0
+                && countKey(village, "promo.terra_towns.req.trades") == 0
+                && countKey(village, "promo.terra_towns.req.jobs") == 0;
+        verdict.put("newBuildingsCountFromVillageTier", newCounted);
+        verdict.put("townChecklistAsksWorkersAndNewBuildings", townAsks);
+        verdict.put("villageChecklistAsksBuildingsOnly", villageAsks);
+        out.put("villageChecklist", village.stream().map(r -> r.label().getString() + (r.met() ? " ✔" : " ✘")).toList());
+        out.put("verdict", verdict);
+        return out;
+    }
+
+    /** An air block inside {@code box} standing on something solid: somewhere to put a block. */
+    @javax.annotation.Nullable
+    private static BlockPos openFloorIn(ServerLevel level, net.minecraft.world.level.levelgen.structure.BoundingBox box) {
+        for (BlockPos p : BlockPos.betweenClosed(box.minX() + 1, box.minY() + 1, box.minZ() + 1,
+                box.maxX() - 1, box.maxY() - 1, box.maxZ() - 1)) {
+            if (level.getBlockState(p).isAir() && level.getBlockState(p.below()).isSolidRender(level, p.below())) {
+                return p.immutable();
+            }
+        }
+        return null;
+    }
+
+    private static long countKey(List<SettlementPromotion.Requirement> reqs, String key) {
+        return reqs.stream().filter(r -> r.label().getContents() instanceof TranslatableContents t
+                && t.getKey().equals(key)).count();
+    }
+
+    /** Does a requirement of {@code key} name the building {@code id} (its first argument)? */
+    private static boolean namesBuilding(List<SettlementPromotion.Requirement> reqs, String key, String id) {
+        return reqs.stream().anyMatch(r -> r.label().getContents() instanceof TranslatableContents t
+                && t.getKey().equals(key) && t.getArgs().length > 0
+                && t.getArgs()[0] instanceof Component c && c.getContents() instanceof TranslatableContents a
+                && a.getKey().equals("building.terra_towns." + id));
     }
 
     /** Admin reassignment (/terraTowns assign) at the data level: move a stand-in player twice. */

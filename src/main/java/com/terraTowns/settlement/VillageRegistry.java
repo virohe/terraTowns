@@ -1,6 +1,7 @@
 package com.terraTowns.settlement;
 
 import com.terraTowns.TerraTowns;
+import com.terraTowns.structure.BuildingDetection;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.ResourceLocation;
@@ -16,6 +17,8 @@ import net.minecraft.world.level.levelgen.structure.StructureStart;
 import net.minecraft.world.level.levelgen.structure.pools.StructurePoolElement;
 
 import java.lang.reflect.Method;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
@@ -43,7 +46,8 @@ public final class VillageRegistry {
     /** A registered settlement this close to a village's centre is that village. */
     private static final int SAME_VILLAGE = 48;
 
-    private record Found(BlockPos center, BoundingBox bounds, ResourceLocation structure, boolean hasGym, int gyms) {
+    private record Found(BlockPos center, BoundingBox bounds, ResourceLocation structure, boolean hasGym, int gyms,
+                         List<SettlementData.Structure> pieces) {
     }
 
     private static final Queue<Found> QUEUE = new ConcurrentLinkedQueue<>();
@@ -65,7 +69,7 @@ public final class VillageRegistry {
             }
             int gyms = countGyms(start);
             QUEUE.add(new Found(start.getPieces().get(0).getBoundingBox().getCenter(), start.getBoundingBox(),
-                    structures.getKey(e.getKey()), gyms > 0, gyms));
+                    structures.getKey(e.getKey()), gyms > 0, gyms, buildingPieces(start)));
         }
     }
 
@@ -122,6 +126,11 @@ public final class VillageRegistry {
                     known.setFootprint(f.bounds());
                     manager.setDirty();
                 }
+                if (known.structures().isEmpty() && known.generatedGym()) {
+                    // Registered before 0.5.2, before villages' buildings were detected.
+                    known.structures().addAll(f.pieces());
+                    manager.setDirty();
+                }
                 continue;
             }
             if (!f.hasGym()) {
@@ -134,11 +143,45 @@ public final class VillageRegistry {
             SettlementData village = manager.register(f.center(), SettlementTier.VILLAGE);
             village.setGeneratedGym(true);
             village.setFootprint(f.bounds());
+            village.structures().addAll(f.pieces());
             village.setName(villageName(f.structure()));
             manager.setDirty();
             TerraTowns.LOGGER.info("Registered village {} ({}) at {} with {} gym(s)",
                     village.id(), f.structure(), f.center(), f.gyms());
         }
+    }
+
+    /**
+     * What a village generates that is never a building (0.5.2): streets and their end pieces,
+     * lamp posts and decorations, and the 1x1 pieces vanilla spawns its villagers, cats and iron
+     * golem from. The first harness run counted 80% of village pieces as unrecognised, all of
+     * them these.
+     */
+    private static final List<String> NOT_BUILDINGS = List.of(
+            "street", "/terminators/", "/animals/", "/villagers/", "iron_golem", "decoration", "lamp");
+
+    /**
+     * The pieces of a village that can be buildings (0.5.2), for {@code BuildingDetection}:
+     * every template piece but {@link #NOT_BUILDINGS} and anything under 3 blocks across.
+     * Features and empty pieces name no template and are left out with them.
+     */
+    private static List<SettlementData.Structure> buildingPieces(StructureStart start) {
+        List<SettlementData.Structure> out = new ArrayList<>();
+        for (StructurePiece piece : start.getPieces()) {
+            if (!(piece instanceof PoolElementStructurePiece p)) {
+                continue;
+            }
+            String described = describe(p.getElement());
+            String template = BuildingDetection.templateOf(described);
+            BoundingBox box = p.getBoundingBox();
+            if (template == null || described.startsWith("Feature") || described.startsWith("Empty")
+                    || NOT_BUILDINGS.stream().anyMatch(template::contains)
+                    || box.getXSpan() < 3 || box.getZSpan() < 3) {
+                continue;
+            }
+            out.add(new SettlementData.Structure(box, template, false));
+        }
+        return out;
     }
 
     /** "Plains Village", "Salem Village": the style, until villages get names of their own. */

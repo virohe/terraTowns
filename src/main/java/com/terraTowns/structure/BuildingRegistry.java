@@ -108,7 +108,7 @@ public final class BuildingRegistry {
             settlement.removePlaque(pos);
             plaque.showProblem("sign.terra_towns.plaque.no_type");
         } else {
-            settlement.setPlaque(pos, chosen, BuildingSurvey.claimable(level, room), room.start());
+            settlement.setPlaque(pos, chosen, BuildingSurvey.claimable(level, room), room.start(), room.box());
             plaque.show(chosen);
         }
         if (chosen != before) {

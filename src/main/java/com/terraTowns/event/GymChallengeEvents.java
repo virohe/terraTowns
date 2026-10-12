@@ -79,6 +79,8 @@ public final class GymChallengeEvents {
         }
 
         boolean firstWin = !settlement.isGymCleared();
+        // A promotion is judged on the settlement as it stands, not as last re-checked (0.5.2).
+        com.terraTowns.structure.BuildingDetection.refreshAll(level, settlement);
         SettlementPromotion.Eval eval = SettlementPromotion.evaluate(level, settlement);
         boolean ready = eval.to() != null && eval.allMet();
 

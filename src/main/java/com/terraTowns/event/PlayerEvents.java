@@ -71,6 +71,8 @@ public final class PlayerEvents {
             HamletPiece.Built built = HamletPiece.place(overworld, site.get());
             hamlet = manager.addSpawnHamlet(site.get(), player.getUUID(), built.spawn(), playerName + "'s Hamlet");
             hamlet.setFootprint(built.bounds());
+            hamlet.addHouses(built.houses());
+            com.terraTowns.structure.BuildingDetection.refreshAll(overworld, hamlet);
         }
 
         BlockPos spawn = hamlet.spawnPoint() != null ? hamlet.spawnPoint() : hamlet.center();

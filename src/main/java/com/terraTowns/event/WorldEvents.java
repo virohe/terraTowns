@@ -114,7 +114,10 @@ public final class WorldEvents {
         long start = System.nanoTime();
         HamletPiece.Built built = HamletPiece.place(level, site);
         BlockPos spawn = built.spawn();
-        manager.addSpawnHamlet(site, null, spawn, "Hamlet " + number).setFootprint(built.bounds());
+        com.terraTowns.settlement.SettlementData hamlet = manager.addSpawnHamlet(site, null, spawn, "Hamlet " + number);
+        hamlet.setFootprint(built.bounds());
+        hamlet.addHouses(built.houses());
+        com.terraTowns.structure.BuildingDetection.refreshAll(level, hamlet);
         if (number == 1) {
             level.setDefaultSpawnPos(spawn, 0.0f);
         }

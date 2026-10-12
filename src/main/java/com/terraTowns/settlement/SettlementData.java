@@ -76,6 +76,23 @@ public final class SettlementData {
      * table — or a table set into the wall two rooms share can't count for both.
      */
     private final Map<Long, Set<Long>> plaqueClaims = new HashMap<>();
+    /** The space each plaque's building occupies, for the settlement map (0.5.2). */
+    private final Map<Long, BoundingBox> plaqueBoxes = new HashMap<>();
+    /**
+     * The tier the settlement was when each plaque first registered (0.5.2): a building put up
+     * since the settlement became a village counts toward the town's "new buildings". Absent
+     * for plaques from before 0.5.2, which count as old.
+     */
+    private final Map<Long, Integer> plaqueTiers = new HashMap<>();
+
+    /**
+     * The structures that came with the settlement (0.5.2): a generated village's pieces, a
+     * spawn hamlet's houses. Each is classified from what it holds ({@code BuildingDetection}),
+     * so a village's buildings count without plaques. A plaque hung inside one overrides it.
+     */
+    private final List<Structure> structures = new ArrayList<>();
+    /** Round-robin position of the detection re-check; not saved. */
+    private int detectionCursor;
 
     /**
      * Settlement jobs unlocked so far (0.4). Persisted rather than recomputed on demand so an
@@ -289,20 +306,85 @@ public final class SettlementData {
         return sections;
     }
 
-    /** Every category currently registered, from plaques plus any legacy registrations. */
+    /** Every category currently registered: plaques, detected structures, legacy registrations. */
     public Set<BuildingCategory> registeredBuildings() {
         Set<BuildingCategory> all = EnumSet.noneOf(BuildingCategory.class);
-        all.addAll(legacyBuildings);
-        all.addAll(plaques.values());
-        if (hasBuilding(BuildingCategory.GYM)) {
-            all.add(BuildingCategory.GYM); // a generated village's gym (see generatedGym)
+        for (BuildingCategory c : BuildingCategory.values()) {
+            if (hasBuilding(c)) {
+                all.add(c);
+            }
         }
         return all;
     }
 
     public boolean hasBuilding(BuildingCategory category) {
-        return legacyBuildings.contains(category) || plaques.containsValue(category)
-                || (category == BuildingCategory.GYM && generatedGym && deskPos != null);
+        return buildingCount(category) > 0;
+    }
+
+    /**
+     * How many buildings of {@code category} the settlement has: one per plaque naming it, one
+     * per detected structure of that type no plaque overrides, and one for a registration with no
+     * plaque (legacy). A generated village's gym counts while its desk stands even before its
+     * piece has been classified.
+     */
+    public int buildingCount(BuildingCategory category) {
+        int n = legacyBuildings.contains(category) ? 1 : 0;
+        for (BuildingCategory c : plaques.values()) {
+            if (c == category) {
+                n++;
+            }
+        }
+        for (Structure st : structures) {
+            if (st.counts() && st.type() == category) {
+                n++;
+            }
+        }
+        if (n == 0 && category == BuildingCategory.GYM && generatedGym && deskPos != null) {
+            n = 1;
+        }
+        return n;
+    }
+
+    /** Plaque buildings registered while the settlement was {@code tier} or higher. */
+    public int buildingsRegisteredSince(SettlementTier tier) {
+        int n = 0;
+        for (Long pos : plaques.keySet()) {
+            Integer at = plaqueTiers.get(pos);
+            if (at != null && at >= tier.ordinal()) {
+                n++;
+            }
+        }
+        return n;
+    }
+
+    public List<Structure> structures() {
+        return structures;
+    }
+
+    /** A spawn hamlet's houses, as built: structures that only ever count as Housing. */
+    public void addHouses(List<BoundingBox> houses) {
+        for (BoundingBox b : houses) {
+            structures.add(new Structure(b, "terra_towns:hamlet/house", true));
+        }
+    }
+
+    /** Next index for the detection re-check to look at (wraps); -1 with no structures. */
+    public int nextDetectionIndex() {
+        if (structures.isEmpty()) {
+            return -1;
+        }
+        detectionCursor = (detectionCursor + 1) % structures.size();
+        return detectionCursor;
+    }
+
+    /** Where every plaque's survey started: a structure containing one is the plaque's building. */
+    public java.util.Collection<Long> plaqueStarts() {
+        return plaqueStarts.values();
+    }
+
+    @Nullable
+    public BoundingBox plaqueBox(long plaquePos) {
+        return plaqueBoxes.get(plaquePos);
     }
 
     public boolean generatedGym() {
@@ -328,8 +410,13 @@ public final class SettlementData {
     }
 
     /** Record that the plaque at {@code pos} now names {@code category}. */
-    public void setPlaque(BlockPos pos, BuildingCategory category, Set<BlockPos> claims, BlockPos start) {
+    public void setPlaque(BlockPos pos, BuildingCategory category, Set<BlockPos> claims, BlockPos start,
+                          @Nullable BoundingBox box) {
         plaques.put(pos.asLong(), category);
+        plaqueTiers.putIfAbsent(pos.asLong(), tier.ordinal());
+        if (box != null) {
+            plaqueBoxes.put(pos.asLong(), box);
+        }
         plaqueStarts.put(pos.asLong(), start.asLong());
         Set<Long> packed = new HashSet<>();
         claims.forEach(c -> packed.add(c.asLong()));
@@ -376,21 +463,9 @@ public final class SettlementData {
     public BuildingCategory removePlaque(BlockPos pos) {
         plaqueClaims.remove(pos.asLong());
         plaqueStarts.remove(pos.asLong());
+        plaqueBoxes.remove(pos.asLong());
+        plaqueTiers.remove(pos.asLong());
         return plaques.remove(pos.asLong());
-    }
-
-    /**
-     * @return true if every town-required building category is present. Note this is
-     *         necessary but not sufficient for the upgrade — the gym must also be
-     *         cleared and housing/farm minimums met (see {@code DESIGN.md}).
-     */
-    public boolean meetsTownBuildingRequirement() {
-        for (BuildingCategory c : BuildingCategory.values()) {
-            if (c.requiredForTown() && !hasBuilding(c)) {
-                return false;
-            }
-        }
-        return true;
     }
 
     // --- jobs (0.4) --------------------------------------------------------
@@ -466,8 +541,7 @@ public final class SettlementData {
             tag.putLong("SpawnPoint", spawnPoint.asLong());
         }
         if (footprint != null) {
-            tag.putIntArray("Footprint", new int[]{footprint.minX(), footprint.minY(), footprint.minZ(),
-                    footprint.maxX(), footprint.maxY(), footprint.maxZ()});
+            tag.putIntArray("Footprint", boxToInts(footprint));
         }
         if (banner != null && !banner.isEmpty()) {
             tag.put("Banner", banner.save(provider));
@@ -488,9 +562,22 @@ public final class SettlementData {
             }
             entry.putLongArray("Claims", plaqueClaims.getOrDefault(e.getKey(), Set.of()).stream()
                     .mapToLong(Long::longValue).toArray());
+            BoundingBox box = plaqueBoxes.get(e.getKey());
+            if (box != null) {
+                entry.putIntArray("Box", boxToInts(box));
+            }
+            Integer at = plaqueTiers.get(e.getKey());
+            if (at != null) {
+                entry.putInt("Tier", at);
+            }
             plaqueList.add(entry);
         }
         tag.put("Plaques", plaqueList);
+        ListTag structureList = new ListTag();
+        for (Structure st : structures) {
+            structureList.add(st.toNbt());
+        }
+        tag.put("Structures", structureList);
         ListTag jobs = new ListTag();
         for (SettlementJob j : unlockedJobs) {
             jobs.add(StringTag.valueOf(j.id()));
@@ -530,7 +617,7 @@ public final class SettlementData {
         data.generatedGym = tag.getBoolean("GeneratedGym");
         int[] fp = tag.getIntArray("Footprint");
         if (fp.length == 6) {
-            data.footprint = new BoundingBox(fp[0], fp[1], fp[2], fp[3], fp[4], fp[5]);
+            data.footprint = boxFromInts(fp);
         }
         if (tag.contains("SpawnPoint")) {
             data.spawnPoint = BlockPos.of(tag.getLong("SpawnPoint"));
@@ -558,6 +645,17 @@ public final class SettlementData {
             if (entry.contains("Start")) {
                 data.plaqueStarts.put(entry.getLong("Pos"), entry.getLong("Start"));
             }
+            int[] box = entry.getIntArray("Box");
+            if (box.length == 6) {
+                data.plaqueBoxes.put(entry.getLong("Pos"), boxFromInts(box));
+            }
+            if (entry.contains("Tier")) {
+                data.plaqueTiers.put(entry.getLong("Pos"), entry.getInt("Tier"));
+            }
+        }
+        ListTag structureList = tag.getList("Structures", Tag.TAG_COMPOUND);
+        for (int i = 0; i < structureList.size(); i++) {
+            data.structures.add(Structure.fromNbt(structureList.getCompound(i)));
         }
         ListTag jobs = tag.getList("UnlockedJobs", Tag.TAG_STRING);
         for (int i = 0; i < jobs.size(); i++) {
@@ -577,6 +675,130 @@ public final class SettlementData {
             data.sections.add(SettlementSection.fromNbt(sectionList.getCompound(i)));
         }
         return data;
+    }
+
+    static int[] boxToInts(BoundingBox b) {
+        return new int[]{b.minX(), b.minY(), b.minZ(), b.maxX(), b.maxY(), b.maxZ()};
+    }
+
+    static BoundingBox boxFromInts(int[] a) {
+        return new BoundingBox(a[0], a[1], a[2], a[3], a[4], a[5]);
+    }
+
+    /**
+     * A structure that came with the settlement (0.5.2) and what it was last found to be.
+     *
+     * <p>{@code housingOnly}: a spawn hamlet's house, which only ever counts as Housing (its
+     * villagers are unemployed but for a few farmers; user, 2026-10-12). {@code type} is null
+     * until classified, or when the structure holds nothing a building type needs (a decoration,
+     * a well). {@code plaqued}: a plaque hangs inside it, and the plaque's building is the one
+     * that counts.</p>
+     */
+    public static final class Structure {
+        private final BoundingBox box;
+        private final String template;
+        private final boolean housingOnly;
+        @Nullable
+        private BuildingCategory type;
+        private int beds;
+        private List<String> workstations = List.of();
+        private boolean classified;
+        private boolean plaqued;
+
+        public Structure(BoundingBox box, String template, boolean housingOnly) {
+            this.box = box;
+            this.template = template;
+            this.housingOnly = housingOnly;
+        }
+
+        public BoundingBox box() {
+            return box;
+        }
+
+        public String template() {
+            return template;
+        }
+
+        public boolean housingOnly() {
+            return housingOnly;
+        }
+
+        @Nullable
+        public BuildingCategory type() {
+            return type;
+        }
+
+        public int beds() {
+            return beds;
+        }
+
+        /** Profession ids of the workstations inside, one entry per workstation. */
+        public List<String> workstations() {
+            return workstations;
+        }
+
+        public boolean classified() {
+            return classified;
+        }
+
+        public boolean plaqued() {
+            return plaqued;
+        }
+
+        /** Does this structure count as a building of its type? */
+        public boolean counts() {
+            return classified && type != null && !plaqued;
+        }
+
+        /** @return true if anything changed. */
+        public boolean update(@Nullable BuildingCategory type, int beds, List<String> workstations, boolean plaqued) {
+            boolean changed = !classified || this.type != type || this.beds != beds
+                    || !this.workstations.equals(workstations) || this.plaqued != plaqued;
+            this.type = type;
+            this.beds = beds;
+            this.workstations = List.copyOf(workstations);
+            this.plaqued = plaqued;
+            this.classified = true;
+            return changed;
+        }
+
+        CompoundTag toNbt() {
+            CompoundTag tag = new CompoundTag();
+            tag.putIntArray("Box", boxToInts(box));
+            tag.putString("Template", template);
+            if (housingOnly) {
+                tag.putBoolean("HousingOnly", true);
+            }
+            if (classified) {
+                tag.putBoolean("Classified", true);
+                if (type != null) {
+                    tag.putString("Type", type.id());
+                }
+                tag.putInt("Beds", beds);
+                ListTag ws = new ListTag();
+                workstations.forEach(w -> ws.add(StringTag.valueOf(w)));
+                tag.put("Workstations", ws);
+                if (plaqued) {
+                    tag.putBoolean("Plaqued", true);
+                }
+            }
+            return tag;
+        }
+
+        static Structure fromNbt(CompoundTag tag) {
+            Structure st = new Structure(boxFromInts(tag.getIntArray("Box")), tag.getString("Template"),
+                    tag.getBoolean("HousingOnly"));
+            if (tag.getBoolean("Classified")) {
+                List<String> ws = new ArrayList<>();
+                ListTag list = tag.getList("Workstations", Tag.TAG_STRING);
+                for (int i = 0; i < list.size(); i++) {
+                    ws.add(list.getString(i));
+                }
+                st.update(tag.contains("Type") ? BuildingCategory.byId(tag.getString("Type")) : null,
+                        tag.getInt("Beds"), ws, tag.getBoolean("Plaqued"));
+            }
+            return st;
+        }
     }
 
     /**

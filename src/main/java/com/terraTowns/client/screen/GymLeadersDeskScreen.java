@@ -32,8 +32,8 @@ import java.util.function.Supplier;
  * <p>Laid out like vanilla's creative inventory: item-icon tabs along the top (the selected tab
  * merges into the panel, the others sit behind it, hovering one names it), the current tab's name
  * as the title, and a vanilla container panel beneath, all drawn by {@link VanillaGui} with colours
- * sampled from vanilla's own textures. Four tabs: <b>Overview</b> (name, banner, tier, progress,
- * registered buildings), <b>Jobs</b> (the job board, with the workstations that staff each job),
+ * sampled from vanilla's own textures. Tabs: <b>Overview</b> (name, banner, tier, a progress
+ * summary, registered buildings), <b>Progress</b> (every requirement for the next tier), <b>Jobs</b> (the job board, with the workstations that staff each job),
  * <b>Sections</b> (named districts), and a <b>Heat map</b> stub.</p>
  *
  * <p>Edits are optimistic-free: they are sent as packets and the server echoes a fresh
@@ -43,9 +43,10 @@ public class GymLeadersDeskScreen extends Screen {
 
     private enum Tab {
         OVERVIEW("overview", () -> new ItemStack(TerraTownsRegistries.GYM_LEADERS_DESK_ITEM.get())),
+        PROGRESS("progress", () -> new ItemStack(Items.WRITABLE_BOOK)),
         JOBS("jobs", () -> new ItemStack(Items.SMITHING_TABLE)),
-        SECTIONS("sections", () -> new ItemStack(Items.WHITE_BANNER)),
-        HEATMAP("heatmap", () -> new ItemStack(Items.MAP));
+        /** Sections and the old heat-map stub, merged into one map of the settlement (0.5.3). */
+        MAP("map", () -> new ItemStack(Items.FILLED_MAP));
 
         private final String key;
         private final Supplier<ItemStack> icon;
@@ -55,8 +56,23 @@ public class GymLeadersDeskScreen extends Screen {
             this.icon = icon;
         }
 
-        Component title() {
-            return Component.translatable("screen.terra_towns.desk.tab." + key);
+        /** The map's title follows the settlement: "Village Map". */
+        Component title(SettlementData data) {
+            return this == MAP
+                    ? Component.translatable("screen.terra_towns.desk.tab.map",
+                            Component.translatable("settlement.terra_towns.tier." + data.tier().id()))
+                    : Component.translatable("screen.terra_towns.desk.tab." + key);
+        }
+    }
+
+    /** The map tab's sub-tabs (user's design, 2026-10-12). */
+    private enum MapMode {
+        PLAIN("plain"), BUILDINGS("buildings"), SECTIONS("sections");
+
+        private final String key;
+
+        MapMode(String key) {
+            this.key = key;
         }
     }
 
@@ -85,6 +101,17 @@ public class GymLeadersDeskScreen extends Screen {
     // Job board (server-evaluated; arrives via SyncJobBoardPacket alongside the checklist).
     private List<SyncJobBoardPacket.Entry> jobs = List.of();
 
+    // Map tab (0.5.3): the picture arrives with the desk sync (SyncSettlementMapPacket).
+    @Nullable
+    private SettlementMapView map;
+    private MapMode mapMode = MapMode.BUILDINGS;
+    private boolean legendOpen;
+    /** Legend entries switched off: building type ids, or "unrecognised". */
+    private final java.util.Set<String> hiddenTypes = new java.util.HashSet<>();
+    private static final int MAP_TOP = 38;
+    private static final int LEGEND_W = 112;
+    private static final int LEGEND_ROW = 11;
+
     // Sections state.
     private int selectedSection = -1;
     private int sectionListTop;
@@ -108,6 +135,23 @@ public class GymLeadersDeskScreen extends Screen {
         rebuildWidgets();
     }
 
+    /** Dev only ({@code RenderCheck}): show the map tab, with buildings and the legend or plain. */
+    public void showMapForCheck(boolean buildings) {
+        commitName();
+        tab = Tab.MAP;
+        mapMode = buildings ? MapMode.BUILDINGS : MapMode.PLAIN;
+        legendOpen = buildings;
+        rebuildWidgets();
+    }
+
+    /** Install the settlement map picture (sent with the desk sync). */
+    public void setMap(com.terraTowns.settlement.SettlementMap.Image image) {
+        if (map != null) {
+            map.close();
+        }
+        map = new SettlementMapView(image);
+    }
+
     /** Install the server-evaluated job board shown in the Jobs tab. */
     public void setJobBoard(List<SyncJobBoardPacket.Entry> entries) {
         this.jobs = entries;
@@ -127,8 +171,8 @@ public class GymLeadersDeskScreen extends Screen {
         nameField = null;
         switch (tab) {
             case OVERVIEW -> initOverview();
-            case SECTIONS -> initSections();
-            case JOBS, HEATMAP -> { /* drawn in render */ }
+            case MAP -> initMap();
+            case PROGRESS, JOBS -> { /* drawn in render */ }
         }
     }
 
@@ -143,8 +187,33 @@ public class GymLeadersDeskScreen extends Screen {
         bannerSlotY = topPos + 30;
     }
 
+    private void initMap() {
+        int x = leftPos + PAD;
+        for (MapMode mode : MapMode.values()) {
+            Button b = Button.builder(Component.translatable("screen.terra_towns.desk.map.mode." + mode.key),
+                    btn -> {
+                        mapMode = mode;
+                        rebuildWidgets();
+                    }).bounds(x, topPos + 18, 62, 16).build();
+            b.active = mode != mapMode; // the selected sub-tab reads as pressed
+            addRenderableWidget(b);
+            x += 64;
+        }
+        if (mapMode == MapMode.BUILDINGS) {
+            addRenderableWidget(Button.builder(Component.translatable(legendOpen
+                            ? "screen.terra_towns.desk.map.legend.hide" : "screen.terra_towns.desk.map.legend.show"),
+                    btn -> {
+                        legendOpen = !legendOpen;
+                        rebuildWidgets();
+                    }).bounds(leftPos + WIDTH - PAD - 50, topPos + 18, 50, 16).build());
+        }
+        if (mapMode == MapMode.SECTIONS) {
+            initSections();
+        }
+    }
+
     private void initSections() {
-        sectionListTop = topPos + 22;
+        sectionListTop = topPos + MAP_TOP;
         int buttonW = (WIDTH - 2 * PAD - 4) / 2;
         addRenderableWidget(Button.builder(Component.translatable("screen.terra_towns.desk.section.add"),
                 b -> minecraft.setScreen(new AddSectionScreen(this, data.id())))
@@ -216,7 +285,22 @@ public class GymLeadersDeskScreen extends Screen {
             setBannerFromHand();
             return true;
         }
-        if (tab == Tab.SECTIONS) {
+        if (tab == Tab.MAP && mapMode == MapMode.BUILDINGS && legendOpen) {
+            List<String> entries = legendEntries();
+            int lx = leftPos + WIDTH - PAD - LEGEND_W;
+            int ly = topPos + MAP_TOP;
+            for (int i = 0; i < entries.size(); i++) {
+                int rowY = ly + 4 + i * LEGEND_ROW;
+                if (mouseX >= lx && mouseX < lx + LEGEND_W && mouseY >= rowY && mouseY < rowY + LEGEND_ROW) {
+                    String key = entries.get(i);
+                    if (!hiddenTypes.remove(key)) {
+                        hiddenTypes.add(key);
+                    }
+                    return true;
+                }
+            }
+        }
+        if (tab == Tab.MAP && mapMode == MapMode.SECTIONS) {
             int rows = data.sections().size();
             for (int i = 0; i < rows; i++) {
                 int rowY = sectionListTop + i * SECTION_ROW_H;
@@ -278,18 +362,18 @@ public class GymLeadersDeskScreen extends Screen {
         for (int i = 0; i < tabs.length; i++) {
             graphics.renderItem(tabs[i].icon.get(), VanillaGui.tabX(leftPos, i) + 5, VanillaGui.tabY(topPos) + 9);
         }
-        graphics.drawString(font, tab.title(), leftPos + PAD, topPos + 6, VanillaGui.LABEL, false);
+        graphics.drawString(font, tab.title(data), leftPos + PAD, topPos + 6, VanillaGui.LABEL, false);
 
         switch (tab) {
             case OVERVIEW -> renderOverview(graphics);
+            case PROGRESS -> renderProgress(graphics);
             case JOBS -> renderJobs(graphics, mouseX, mouseY);
-            case SECTIONS -> renderSections(graphics);
-            case HEATMAP -> renderHeatmap(graphics);
+            case MAP -> renderMap(graphics, mouseX, mouseY);
         }
 
         for (int i = 0; i < tabs.length; i++) {
             if (VanillaGui.overTab(mouseX, mouseY, leftPos, topPos, i)) {
-                graphics.renderTooltip(font, tabs[i].title(), mouseX, mouseY);
+                graphics.renderTooltip(font, tabs[i].title(data), mouseX, mouseY);
             }
         }
     }
@@ -319,35 +403,34 @@ public class GymLeadersDeskScreen extends Screen {
         graphics.drawString(font, Component.translatable("screen.terra_towns.desk.tier", tierName),
                 x, topPos + 56, VanillaGui.LABEL, false);
 
-        // Left column: progress toward the next tier. Wider than the right one, because its
-        // lines are the long ones ("Villagers with jobs: 2 / 7" used to run off the panel).
+        // Left column: a one-line summary of the next step up; the full list is the Progress tab
+        // (0.5.2: the town checklist runs to ~20 lines).
         int leftW = 140;
         int y = topPos + 72;
         if (checklistTierId != null) {
+            long met = checklist.stream().filter(SyncPromotionChecklistPacket.Entry::met).count();
             y = drawWrapped(graphics, Component.translatable("screen.terra_towns.desk.progress",
                             Component.translatable("settlement.terra_towns.tier." + checklistTierId)),
                     x, y, leftW, VanillaGui.SUBTLE) + 2;
-            for (SyncPromotionChecklistPacket.Entry entry : checklist) {
-                Component line = Component.literal(entry.met() ? "✔ " : "✘ ")
-                        .withStyle(entry.met() ? ChatFormatting.DARK_GREEN : ChatFormatting.DARK_RED)
-                        .append(entry.label().copy().withStyle(style -> style.withColor(VanillaGui.LABEL)));
-                y = drawWrapped(graphics, line, x, y, leftW, VanillaGui.LABEL);
-            }
+            drawWrapped(graphics, Component.translatable("screen.terra_towns.desk.progress.summary",
+                    met, checklist.size()), x, y, leftW, VanillaGui.LABEL);
         } else {
             drawWrapped(graphics, Component.translatable("screen.terra_towns.desk.progress.none"),
                     x, y, leftW, VanillaGui.SUBTLE);
         }
 
-        // Right column: registered buildings, or how to register one.
+        // Right column: registered buildings with how many of each, or how to register one.
         int colX = x + leftW + 8;
         int colW = leftPos + WIDTH - PAD - colX;
         y = drawWrapped(graphics, Component.translatable("screen.terra_towns.desk.buildings"),
                 colX, topPos + 72, colW, VanillaGui.SUBTLE) + 2;
         boolean any = false;
         for (BuildingCategory category : BuildingCategory.values()) {
-            if (data.hasBuilding(category)) {
-                y = drawWrapped(graphics, Component.literal("• ")
-                                .append(Component.translatable("building.terra_towns." + category.id())),
+            int count = data.buildingCount(category);
+            if (count > 0) {
+                Component name = Component.translatable("building.terra_towns." + category.id());
+                y = drawWrapped(graphics, Component.literal("• ").append(name)
+                                .append(count > 1 ? Component.literal(" ×" + count) : Component.empty()),
                         colX, y, colW, VanillaGui.LABEL);
                 any = true;
             }
@@ -357,6 +440,36 @@ public class GymLeadersDeskScreen extends Screen {
                     colX, y, colW, VanillaGui.LABEL) + 2;
             drawWrapped(graphics, Component.translatable("screen.terra_towns.desk.buildings.hint"),
                     colX, y, colW, VanillaGui.SUBTLE);
+        }
+    }
+
+    /**
+     * Progress tab (0.5.2): every requirement for the next tier, in two columns, each with a
+     * mark. Built on the server ({@code SettlementPromotion}), so no rule is re-derived here.
+     */
+    private void renderProgress(GuiGraphics graphics) {
+        int x = leftPos + PAD;
+        if (checklistTierId == null) {
+            drawWrapped(graphics, Component.translatable("screen.terra_towns.desk.progress.none"),
+                    x, topPos + 22, WIDTH - 2 * PAD, VanillaGui.SUBTLE);
+            return;
+        }
+        int y = drawWrapped(graphics, Component.translatable("screen.terra_towns.desk.progress",
+                        Component.translatable("settlement.terra_towns.tier." + checklistTierId)),
+                x, topPos + 20, WIDTH - 2 * PAD, VanillaGui.SUBTLE) + 2;
+        int colW = (WIDTH - 2 * PAD - 8) / 2;
+        int half = (checklist.size() + 1) / 2;
+        int top = y;
+        for (int i = 0; i < checklist.size(); i++) {
+            SyncPromotionChecklistPacket.Entry entry = checklist.get(i);
+            int colX = i < half ? x : x + colW + 8;
+            if (i == half) {
+                y = top;
+            }
+            Component line = Component.literal(entry.met() ? "✔ " : "✘ ")
+                    .withStyle(entry.met() ? ChatFormatting.DARK_GREEN : ChatFormatting.DARK_RED)
+                    .append(entry.label().copy().withStyle(style -> style.withColor(VanillaGui.LABEL)));
+            y = drawWrapped(graphics, line, colX, y, colW, VanillaGui.LABEL);
         }
     }
 
@@ -424,10 +537,109 @@ public class GymLeadersDeskScreen extends Screen {
         }
     }
 
-    private void renderHeatmap(GuiGraphics graphics) {
-        Component stub = Component.translatable("screen.terra_towns.desk.heatmap.stub");
-        graphics.drawString(font, stub, leftPos + (WIDTH - font.width(stub)) / 2,
-                topPos + HEIGHT / 2 - 4, VanillaGui.SUBTLE, false);
+    /**
+     * Map tab (0.5.3): a bird's-eye view of the settlement's footprint in a vanilla map frame.
+     * "No outline" is the map alone; "Buildings" outlines every registered or detected building
+     * in its type's colour (hover one for what it is; the legend switches types on and off);
+     * "Sections" is the settlement's named districts.
+     */
+    private void renderMap(GuiGraphics graphics, int mouseX, int mouseY) {
+        if (mapMode == MapMode.SECTIONS) {
+            renderSections(graphics);
+            return;
+        }
+        int x = leftPos + PAD;
+        int y = topPos + MAP_TOP;
+        int w = WIDTH - 2 * PAD;
+        int h = HEIGHT - MAP_TOP - PAD;
+        boolean legend = mapMode == MapMode.BUILDINGS && legendOpen;
+        if (legend) {
+            // Beside the map, not over it: over it, it hid the village centre (render check).
+            w -= LEGEND_W + 4;
+        }
+        if (map == null) {
+            drawWrapped(graphics, Component.translatable("screen.terra_towns.desk.map.loading"),
+                    x, y + 4, w, VanillaGui.SUBTLE);
+            return;
+        }
+        map.draw(graphics, x, y, w, h);
+        List<Component> tooltip = null;
+        if (mapMode == MapMode.BUILDINGS) {
+            SettlementMapView.Building hovered = null;
+            long hoveredArea = Long.MAX_VALUE;
+            for (SettlementMapView.Building b : SettlementMapView.buildings(data)) {
+                if (hiddenTypes.contains(legendKey(b.type()))) {
+                    continue;
+                }
+                map.outline(graphics, b.box(), b.color());
+                long area = (long) b.box().getXSpan() * b.box().getZSpan();
+                if (mouseX < x + w && map.over(b.box(), mouseX, mouseY) && area < hoveredArea) {
+                    hovered = b;
+                    hoveredArea = area;
+                }
+            }
+            if (hovered != null) {
+                tooltip = hovered.tooltip();
+            }
+        }
+        if (data.deskPos() != null) {
+            map.marker(graphics, data.deskPos().getX() + 0.5, data.deskPos().getZ() + 0.5, 0xFFE04848);
+        }
+        if (minecraft != null && minecraft.player != null) {
+            map.marker(graphics, minecraft.player.getX(), minecraft.player.getZ(), 0xFFFFFFFF);
+        }
+        if (legend) {
+            renderLegend(graphics, leftPos + WIDTH - PAD - LEGEND_W, y);
+        }
+        if (tooltip != null) {
+            graphics.renderComponentTooltip(font, tooltip, mouseX, mouseY);
+        }
+    }
+
+    /** One row per building type on the map (and "unrecognised"): swatch, name, count; click to hide. */
+    private void renderLegend(GuiGraphics graphics, int lx, int ly) {
+        List<String> entries = legendEntries();
+        int h = 8 + entries.size() * LEGEND_ROW;
+        graphics.fill(lx - 1, ly - 1, lx + LEGEND_W + 1, ly + h + 1, 0xFF000000);
+        graphics.fill(lx, ly, lx + LEGEND_W, ly + h, 0xF0C6C6C6);
+        List<SettlementMapView.Building> buildings = SettlementMapView.buildings(data);
+        for (int i = 0; i < entries.size(); i++) {
+            String key = entries.get(i);
+            BuildingCategory type = key.equals("unrecognised") ? null : BuildingCategory.byId(key);
+            int rowY = ly + 4 + i * LEGEND_ROW;
+            boolean hidden = hiddenTypes.contains(key);
+            int rgb = type == null ? SettlementMapView.UNRECOGNISED : type.color();
+            graphics.fill(lx + 4, rowY + 1, lx + 11, rowY + 8, 0xFF000000);
+            graphics.fill(lx + 5, rowY + 2, lx + 10, rowY + 7, hidden ? 0xFFC6C6C6 : 0xFF000000 | rgb);
+            long count = buildings.stream().filter(b -> b.type() == type).count();
+            Component label = (type == null ? Component.translatable("screen.terra_towns.desk.map.unrecognised")
+                    : SettlementMapView.name(type)).copy().append(" ×" + count);
+            graphics.drawString(font, font.plainSubstrByWidth(label.getString(), LEGEND_W - 18), lx + 15, rowY + 1,
+                    hidden ? VanillaGui.SUBTLE : VanillaGui.LABEL, false);
+        }
+    }
+
+    /** Legend keys for the types on the map, in type order, "unrecognised" last. */
+    private List<String> legendEntries() {
+        java.util.Set<BuildingCategory> present = java.util.EnumSet.noneOf(BuildingCategory.class);
+        boolean unrecognised = false;
+        for (SettlementMapView.Building b : SettlementMapView.buildings(data)) {
+            if (b.type() == null) {
+                unrecognised = true;
+            } else {
+                present.add(b.type());
+            }
+        }
+        List<String> out = new java.util.ArrayList<>();
+        present.forEach(c -> out.add(c.id()));
+        if (unrecognised) {
+            out.add("unrecognised");
+        }
+        return out;
+    }
+
+    private static String legendKey(@Nullable BuildingCategory type) {
+        return type == null ? "unrecognised" : type.id();
     }
 
     /** Parse a 6-digit hex colour token (e.g. {@code "FF5555"}) into an opaque ARGB int. */
@@ -443,6 +655,15 @@ public class GymLeadersDeskScreen extends Screen {
     public void onClose() {
         commitName();
         super.onClose();
+    }
+
+    @Override
+    public void removed() {
+        if (map != null) {
+            map.close();
+            map = null;
+        }
+        super.removed();
     }
 
     @Override

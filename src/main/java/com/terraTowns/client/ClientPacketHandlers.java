@@ -57,6 +57,15 @@ public final class ClientPacketHandlers {
         }
     }
 
+    /** The settlement map picture for the desk's map tab — ignore unless that screen is open. */
+    public static void handleMap(com.terraTowns.network.SyncSettlementMapPacket packet) {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.screen instanceof GymLeadersDeskScreen desk
+                && desk.settlementId().equals(packet.settlementId())) {
+            desk.setMap(packet.image());
+        }
+    }
+
     /** Full settlement set on join — replace the HUD cache wholesale. */
     public static void handleSyncAll(SyncAllSettlementsPacket packet) {
         ClientSettlementCache.INSTANCE.replaceAll(packet.settlements());

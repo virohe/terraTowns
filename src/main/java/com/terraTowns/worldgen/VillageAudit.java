@@ -71,7 +71,7 @@ final class VillageAudit {
         Map<String, Object> summary = new LinkedHashMap<>();
         summary.put("inspected", rows.size());
         summary.put("wanted", wanted);
-        for (String k : new String[]{"exactlyOneGym", "atMostOnePokecenter", "registered", "deskFound", "leaderAtDesk", "leaderReplacedOnDeath"}) {
+        for (String k : new String[]{"exactlyOneGym", "atMostOnePokecenter", "registered", "deskFound", "leaderAtDesk", "leaderReplacedOnDeath", "buildingsDetected"}) {
             summary.put(k, rows.stream().filter(r -> Boolean.TRUE.equals(r.get(k))).count());
         }
         Map<String, Object> out = new LinkedHashMap<>();
@@ -175,6 +175,29 @@ final class VillageAudit {
             }
         }
         row.put("leaderAtDesk", leaderAtDesk);
+        // Its buildings were detected from its pieces (0.5.2): the gym found as a Gym, and
+        // houses as Housing.
+        boolean detected = false;
+        if (s != null) {
+            com.terraTowns.structure.BuildingDetection.refreshAll(level, s);
+            Map<String, Integer> types = new java.util.TreeMap<>();
+            int unrecognised = 0;
+            Map<String, Integer> unrecognisedTemplates = new java.util.TreeMap<>();
+            for (SettlementData.Structure st : s.structures()) {
+                if (st.type() == null) {
+                    unrecognised++;
+                    unrecognisedTemplates.merge(st.template().replaceAll("_[0-9]+$", ""), 1, Integer::sum);
+                } else {
+                    types.merge(st.type().id(), 1, Integer::sum);
+                }
+            }
+            row.put("structures", s.structures().size());
+            row.put("buildingTypes", types);
+            row.put("unrecognised", unrecognised);
+            row.put("unrecognisedTemplates", unrecognisedTemplates);
+            detected = types.getOrDefault("gym", 0) == 1 && types.getOrDefault("housing", 0) > 0;
+        }
+        row.put("buildingsDetected", detected);
         TerraTowns.LOGGER.info("[village-audit] {}", row);
         return row;
     }
