@@ -112,8 +112,9 @@ public final class WorldEvents {
     private static void buildNext(MinecraftServer server, ServerLevel level, SettlementManager manager,
                                   BlockPos site, int number) {
         long start = System.nanoTime();
-        BlockPos spawn = HamletPiece.place(level, site);
-        manager.addSpawnHamlet(site, null, spawn, "Hamlet " + number);
+        HamletPiece.Built built = HamletPiece.place(level, site);
+        BlockPos spawn = built.spawn();
+        manager.addSpawnHamlet(site, null, spawn, "Hamlet " + number).setFootprint(built.bounds());
         if (number == 1) {
             level.setDefaultSpawnPos(spawn, 0.0f);
         }

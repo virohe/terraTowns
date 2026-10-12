@@ -107,14 +107,14 @@ public final class SettlementManager extends SavedData {
     }
 
     /**
-     * @return the settlement whose own registration radius contains {@code pos}, or null.
-     *         Used by the building registry to attribute a placed structure.
+     * @return the settlement whose ground {@code pos} is on ({@link SettlementData#covers}: its
+     *         footprint, or its registration radius if it has none yet), or null. Gym leaders and
+     *         desks belong to the settlement this returns.
      */
     @Nullable
     public SettlementData containing(BlockPos pos) {
         for (SettlementData s : settlements.values()) {
-            int r = s.registrationRadius();
-            if (s.center().distSqr(pos) <= (long) r * r) {
+            if (s.covers(pos)) {
                 return s;
             }
         }

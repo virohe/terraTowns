@@ -8,6 +8,7 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.tags.StructureTags;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.chunk.LevelChunk;
+import net.minecraft.world.level.levelgen.structure.BoundingBox;
 import net.minecraft.world.level.levelgen.structure.PoolElementStructurePiece;
 import net.minecraft.world.level.levelgen.structure.Structure;
 import net.minecraft.world.level.levelgen.structure.StructurePiece;
@@ -27,8 +28,8 @@ import java.util.concurrent.ConcurrentLinkedQueue;
  * <p>The gym itself comes from world generation: {@code village_gym.json} (a Lithostitched
  * worldgen modifier) adds Terra Towns' gym to each village style's houses pool with a forced
  * count of one, so it is laid out along the village's streets like any house. Its desk is found
- * and handed to a leader by the ordinary desk upkeep ({@link GymDesk}), and the gym template
- * brings an unemployed villager standing beside the desk to claim it.</p>
+ * by the ordinary desk upkeep ({@link GymDesk}), which spawns the gym's leader beside it
+ * ({@link GymDesk#appointLeader}); the template itself carries no villager.</p>
  *
  * <p>Villages are noticed when their start chunk loads (the only chunk that carries the
  * structure start), queued, and registered on the next settlement scan rather than inside the
@@ -42,7 +43,7 @@ public final class VillageRegistry {
     /** A registered settlement this close to a village's centre is that village. */
     private static final int SAME_VILLAGE = 48;
 
-    private record Found(BlockPos center, ResourceLocation structure, boolean hasGym, int gyms) {
+    private record Found(BlockPos center, BoundingBox bounds, ResourceLocation structure, boolean hasGym, int gyms) {
     }
 
     private static final Queue<Found> QUEUE = new ConcurrentLinkedQueue<>();
@@ -63,7 +64,7 @@ public final class VillageRegistry {
                 continue;
             }
             int gyms = countGyms(start);
-            QUEUE.add(new Found(start.getPieces().get(0).getBoundingBox().getCenter(),
+            QUEUE.add(new Found(start.getPieces().get(0).getBoundingBox().getCenter(), start.getBoundingBox(),
                     structures.getKey(e.getKey()), gyms > 0, gyms));
         }
     }
@@ -114,7 +115,13 @@ public final class VillageRegistry {
         SettlementManager manager = SettlementManager.get(level);
         Found f;
         while ((f = QUEUE.poll()) != null) {
-            if (manager.containing(f.center(), SAME_VILLAGE).isPresent()) {
+            SettlementData known = manager.containing(f.center(), SAME_VILLAGE).orElse(null);
+            if (known != null) {
+                if (known.footprint() == null && known.generatedGym()) {
+                    // Registered by 0.5.0, before settlements had footprints.
+                    known.setFootprint(f.bounds());
+                    manager.setDirty();
+                }
                 continue;
             }
             if (!f.hasGym()) {
@@ -126,6 +133,7 @@ public final class VillageRegistry {
             }
             SettlementData village = manager.register(f.center(), SettlementTier.VILLAGE);
             village.setGeneratedGym(true);
+            village.setFootprint(f.bounds());
             village.setName(villageName(f.structure()));
             manager.setDirty();
             TerraTowns.LOGGER.info("Registered village {} ({}) at {} with {} gym(s)",

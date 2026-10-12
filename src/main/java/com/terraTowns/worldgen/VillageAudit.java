@@ -1,6 +1,7 @@
 package com.terraTowns.worldgen;
 
 import com.terraTowns.TerraTowns;
+import com.terraTowns.event.SettlementTickEvents;
 import com.terraTowns.registry.TerraTownsRegistries;
 import com.terraTowns.settlement.SettlementData;
 import com.terraTowns.settlement.SettlementManager;
@@ -11,6 +12,7 @@ import net.minecraft.core.Holder;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.tags.StructureTags;
+import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.npc.Villager;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.levelgen.structure.BoundingBox;
@@ -18,7 +20,6 @@ import net.minecraft.world.level.levelgen.structure.PoolElementStructurePiece;
 import net.minecraft.world.level.levelgen.structure.Structure;
 import net.minecraft.world.level.levelgen.structure.StructurePiece;
 import net.minecraft.world.level.levelgen.structure.StructureStart;
-import net.minecraft.world.phys.AABB;
 
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -35,7 +36,7 @@ import java.util.Set;
  * <p>Finds the nearest village in each of several directions from the origin, generates its
  * whole area, and reports per village: how many Terra Towns gyms and Pok&eacute;centres it has
  * (one gym exactly, at most one Pok&eacute;centre), whether it was registered as a settlement,
- * whether its gym's desk is there, and whether the gym's villager is standing by it.</p>
+ * whether its gym's desk is there, and whether a leader is bound and standing at it.</p>
  */
 final class VillageAudit {
 
@@ -70,7 +71,7 @@ final class VillageAudit {
         Map<String, Object> summary = new LinkedHashMap<>();
         summary.put("inspected", rows.size());
         summary.put("wanted", wanted);
-        for (String k : new String[]{"exactlyOneGym", "atMostOnePokecenter", "registered", "deskFound", "villagerAtDesk"}) {
+        for (String k : new String[]{"exactlyOneGym", "atMostOnePokecenter", "registered", "deskFound", "leaderAtDesk", "leaderReplacedOnDeath"}) {
             summary.put(k, rows.stream().filter(r -> Boolean.TRUE.equals(r.get(k))).count());
         }
         Map<String, Object> out = new LinkedHashMap<>();
@@ -148,9 +149,32 @@ final class VillageAudit {
             }
         }
         row.put("deskFound", desk != null);
-        boolean villager = desk != null && !level.getEntitiesOfClass(Villager.class,
-                new AABB(desk).inflate(4)).isEmpty();
-        row.put("villagerAtDesk", villager);
+        // The settlement scan's own binding pass, run here: a generated gym's leader must end up
+        // bound, holding the gym profession, beside its desk. Until 0.5.1 the template brought a
+        // jobless villager and the first one to walk to the desk became leader; in a playtest
+        // another villager got there first and then couldn't get through the door.
+        boolean leaderAtDesk = false;
+        if (s != null && desk != null) {
+            // In play the desk is found through vanilla's POI index; a chunk generated inside
+            // this one tick isn't indexed yet, so hand over the desk this audit found by scanning.
+            if (s.deskPos() == null) {
+                s.setDeskPos(desk);
+            }
+            SettlementTickEvents.bindGymLeaderIfNeeded(level.getServer(), level, SettlementManager.get(level), s);
+            Entity e = s.gymLeaderId() == null ? null : level.getEntity(s.gymLeaderId());
+            leaderAtDesk = e instanceof Villager v
+                    && v.getVillagerData().getProfession() == TerraTownsRegistries.GYM_LEADER_PROFESSION.get()
+                    && v.blockPosition().closerThan(desk, 3);
+            row.put("leaderBound", s.gymLeaderId() != null);
+            // An unowned village is never left without someone to challenge: kill the leader
+            // and the next scan spawns a successor.
+            if (leaderAtDesk) {
+                ((Villager) e).kill();
+                SettlementTickEvents.bindGymLeaderIfNeeded(level.getServer(), level, SettlementManager.get(level), s);
+                row.put("leaderReplacedOnDeath", s.gymLeaderId() != null && !s.gymLeaderId().equals(e.getUUID()));
+            }
+        }
+        row.put("leaderAtDesk", leaderAtDesk);
         TerraTowns.LOGGER.info("[village-audit] {}", row);
         return row;
     }

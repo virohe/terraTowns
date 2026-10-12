@@ -6,7 +6,6 @@ import com.terraTowns.integration.CobblemonHook;
 import com.terraTowns.network.TerraTownsNetwork;
 import com.terraTowns.registry.TerraTownsRegistries;
 import com.terraTowns.settlement.SettlementData;
-import com.terraTowns.settlement.GymDesk;
 import com.terraTowns.settlement.SettlementManager;
 import com.terraTowns.settlement.SettlementPromotion;
 import net.minecraft.ChatFormatting;
@@ -116,9 +115,6 @@ public final class GymChallengeEvents {
                         .withStyle(ChatFormatting.AQUA));
             }
             settlement.setGymCleared(true);
-            // Beaten, the leader is locked in like a villager you've traded with: it stays gym
-            // leader even while its desk is being moved.
-            GymDesk.lock(gymLeader);
             player.sendSystemMessage(Component.translatable("message.terra_towns.challenge.unlocked")
                     .withStyle(ChatFormatting.AQUA));
         }

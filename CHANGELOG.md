@@ -5,6 +5,41 @@ Entries before 0.4.8 were reconstructed on 2026-09-27 from DESIGN.md and session
 project had no version control until then. Snapshots of 0.3.13 (partial) and 0.4.0+ are in
 `releases/terra-towns/`.
 
+## 0.5.1 — 2026-10-12
+Gym leaders are appointed, never recruited (playtest: a village gym's desk was claimed by the
+wrong villager, who then couldn't get through the gym's door, so the gym had nobody to challenge).
+- **Appoint a leader yourself.** Hold a Gym Leader's Desk and right-click an unemployed adult
+  villager: it becomes the gym leader of the settlement it stands in, and walks to the settlement's
+  desk to work (the desk in your hand isn't used up). Refused, with a reason on the action bar, if
+  the settlement already has a leader, isn't yours, or the villager isn't unemployed or isn't in a
+  settlement. One leader per settlement. (`GymDesk.appoint`, `event.GymLeaderEvents`)
+- **No villager can claim a desk.** The desk is no longer a workstation villagers look for (out of
+  vanilla's acquirable-job-site tag; the profession acquires none). The leader is given its
+  settlement's desk as its job site; a second desk does nothing and can't be taken.
+- **Leaders are locked from the start**, the way a villager you've traded with is, so a leader
+  keeps its job with no desk at all, e.g. while you move the desk. Until now only a beaten leader
+  was (TT-206).
+- **A leader's post falls vacant only when it dies** (or a zombie converts it). The owner is told
+  and appoints a successor; nobody takes the post unasked.
+- **Generated villages spawn their own leader** beside the gym's desk while the village is
+  unowned, so a village always has somebody to challenge, also after a death. The gym template
+  carries no villager any more: a gym only needs its desk. Villages already generated get their
+  leader on the next settlement scan once their gym is loaded. (`GymDesk.appointLeader`)
+- **Settlements have footprints**: a generated village's structure bounds or a spawn hamlet's
+  built pieces, plus 8 blocks. Leaders, desks and appointments work only inside it. Villages from
+  0.5.0 get theirs when their start chunk next loads; older hamlets keep the radius around their
+  centre. (`SettlementData.footprint`)
+- Worlds from before 0.5.1: a leader already bound stays leader (and is locked); a villager that
+  had claimed a desk without being bound is adopted as its settlement's leader.
+- Tests: the harness `gymDesk` stage is rewritten for appointment (who may be appointed, one per
+  settlement, footprint, ownership, desk following the leader, death vacating the post, a
+  successor). `VillageAudit` runs the real binding pass and checks a leader is bound at the desk
+  (`leaderAtDesk`, which failed on 0.5.0 in all four harness villages) and is replaced when killed
+  (`leaderReplacedOnDeath`). The harness server's watchdog is off (`max-tick-time=-1`): its boot
+  builds 8 hamlets and audits 4 villages inside one tick by design, which now runs past 60 s.
+  `runRenderCheck` finds the gym through the settlement's recorded desk (a hillside gym sat 39
+  blocks above its village's centre, out of its search).
+
 ## 0.5.0 — 2026-10-03
 Stage 0.5, villages. Generated villages join the settlement system.
 - **Every village has exactly one gym.** Terra Towns' gym is added to each village style's houses

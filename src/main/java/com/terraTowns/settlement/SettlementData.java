@@ -8,6 +8,9 @@ import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.StringTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.levelgen.structure.BoundingBox;
+import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.Vec3;
 
 import javax.annotation.Nullable;
 import java.util.ArrayList;
@@ -128,6 +131,17 @@ public final class SettlementData {
     @Nullable
     private BlockPos spawnPoint;
 
+    /**
+     * The ground the settlement actually covers (0.5.1): a generated village's structure bounds,
+     * or a spawn hamlet's built pieces, plus {@link #FOOTPRINT_MARGIN}. Gym leaders and desks
+     * work only inside it, so a leader can't be appointed, nor a desk bound, from a field
+     * between two villages. Null for settlements from before 0.5.1 that haven't been re-measured;
+     * they fall back to the registration radius around the centre.
+     */
+    @Nullable
+    private BoundingBox footprint;
+    public static final int FOOTPRINT_MARGIN = 8;
+
     public SettlementData(UUID id, BlockPos center, SettlementTier tier) {
         this.id = id;
         this.center = center;
@@ -188,6 +202,35 @@ public final class SettlementData {
 
     public int registrationRadius() {
         return registrationRadius;
+    }
+
+    @Nullable
+    public BoundingBox footprint() {
+        return footprint;
+    }
+
+    /** Record the area the settlement's structures cover; the margin is added here. */
+    public void setFootprint(BoundingBox built) {
+        this.footprint = built.inflatedBy(FOOTPRINT_MARGIN);
+    }
+
+    /** Is {@code pos} on this settlement's ground? Columns count whatever their height. */
+    public boolean covers(BlockPos pos) {
+        if (footprint == null) {
+            return center.distSqr(pos) <= (long) registrationRadius * registrationRadius;
+        }
+        return pos.getX() >= footprint.minX() && pos.getX() <= footprint.maxX()
+                && pos.getZ() >= footprint.minZ() && pos.getZ() <= footprint.maxZ();
+    }
+
+    /** The space to search for this settlement's villagers and desks. */
+    public AABB area() {
+        if (footprint == null) {
+            double r = registrationRadius;
+            return AABB.ofSize(Vec3.atCenterOf(center), 2.0 * r, 2.0 * r, 2.0 * r);
+        }
+        return new AABB(footprint.minX(), footprint.minY() - 16, footprint.minZ(),
+                footprint.maxX() + 1, footprint.maxY() + 16, footprint.maxZ() + 1);
     }
 
     public UUID gymLeaderId() {
@@ -422,6 +465,10 @@ public final class SettlementData {
         if (spawnPoint != null) {
             tag.putLong("SpawnPoint", spawnPoint.asLong());
         }
+        if (footprint != null) {
+            tag.putIntArray("Footprint", new int[]{footprint.minX(), footprint.minY(), footprint.minZ(),
+                    footprint.maxX(), footprint.maxY(), footprint.maxZ()});
+        }
         if (banner != null && !banner.isEmpty()) {
             tag.put("Banner", banner.save(provider));
         }
@@ -481,6 +528,10 @@ public final class SettlementData {
             data.ownerId = tag.getUUID("OwnerId");
         }
         data.generatedGym = tag.getBoolean("GeneratedGym");
+        int[] fp = tag.getIntArray("Footprint");
+        if (fp.length == 6) {
+            data.footprint = new BoundingBox(fp[0], fp[1], fp[2], fp[3], fp[4], fp[5]);
+        }
         if (tag.contains("SpawnPoint")) {
             data.spawnPoint = BlockPos.of(tag.getLong("SpawnPoint"));
         }

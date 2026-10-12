@@ -3,6 +3,7 @@ package com.terraTowns.worldgen;
 import com.terraTowns.influence.InfluenceTracker;
 import com.terraTowns.rival.RivalPool;
 import com.terraTowns.settlement.JobBoard;
+import com.terraTowns.settlement.GymDesk;
 import com.terraTowns.settlement.SettlementData;
 import com.terraTowns.settlement.SettlementJob;
 import com.terraTowns.settlement.SettlementManager;
@@ -319,9 +320,10 @@ public final class JobAudit {
     }
 
     /**
-     * The desk rules (GymDesk) on a real settlement, with vanilla's own villager AI stood in for
-     * by the exact state changes it makes (claiming a job site; dropping an untraded villager's
-     * profession when its job site goes), since nothing ticks in the harness.
+     * The gym-leader and desk rules (GymDesk, 0.5.1) on a real settlement: appointing a leader by
+     * hand, who may and may not be appointed, the desk following its leader, and a death leaving
+     * the post vacant. Vanilla's villager AI is stood in for by the exact state changes it makes
+     * (forgetting a job site that's gone), since nothing ticks in the harness.
      */
     private static Map<String, Object> gymDesk(ServerLevel level, SettlementManager manager) {
         Map<String, Object> out = new LinkedHashMap<>();
@@ -331,59 +333,72 @@ public final class JobAudit {
         s.setGymLeaderId(null);
         s.setDeskPos(null);
         s.setGymCleared(false);
+        UUID owner = s.ownerId();
         net.minecraft.world.entity.ai.village.poi.PoiManager pois = level.getPoiManager();
+        var deskPoi = level.registryAccess().registryOrThrow(net.minecraft.core.registries.Registries.POINT_OF_INTEREST_TYPE)
+                .getHolderOrThrow(TerraTownsRegistries.GYM_LEADERS_DESK_POI_KEY);
+        VillagerProfession gymLeader = TerraTownsRegistries.GYM_LEADER_PROFESSION.get();
+
+        // No villager's own AI can take a desk; the leader holds one once given it.
+        boolean notClaimable = !deskPoi.is(net.minecraft.tags.PoiTypeTags.ACQUIRABLE_JOB_SITE)
+                && !gymLeader.acquirableJobSite().test(deskPoi);
+        boolean heldAsJobSite = gymLeader.heldJobSite().test(deskPoi);
 
         BlockPos p1 = deskSpot(level, base.offset(3, 0, 3));
         placeDesk(level, s, p1);
-        boolean claimableWithoutLeader = pois.getFreeTickets(p1) == 1 && p1.equals(s.deskPos());
+        boolean deskWaitsForLeader = p1.equals(s.deskPos()) && pois.getFreeTickets(p1) == 1 && s.gymLeaderId() == null;
 
-        // A villager claims it, as vanilla's AcquirePoi + AssignProfessionFromJobSite would.
-        Villager v = net.minecraft.world.entity.EntityType.VILLAGER.spawn(level, base.offset(1, 0, 0),
-                net.minecraft.world.entity.MobSpawnType.EVENT);
-        pois.take(h -> h.is(TerraTownsRegistries.GYM_LEADERS_DESK_POI_KEY), (h, q) -> q.equals(p1), p1, 1);
-        v.getBrain().setMemory(net.minecraft.world.entity.ai.memory.MemoryModuleType.JOB_SITE,
-                net.minecraft.core.GlobalPos.of(level.dimension(), p1));
-        v.setVillagerData(v.getVillagerData().setProfession(TerraTownsRegistries.GYM_LEADER_PROFESSION.get()));
-        com.terraTowns.event.SettlementTickEvents.bindGymLeaderIfNeeded(level.getServer(), level, manager, s);
-        boolean bound = v.getUUID().equals(s.gymLeaderId());
+        // Appointed by hand: becomes the leader, gets the desk, locked from the start.
+        Villager v = villagerAt(level, base.offset(1, 0, 0));
+        GymDesk.Appointment first = GymDesk.appoint(level, v, null);
+        boolean appointed = first == GymDesk.Appointment.APPOINTED && v.getUUID().equals(s.gymLeaderId())
+                && holds(v, p1) && v.getVillagerXp() > 0;
 
-        // The player picks the desk up to move it: vanilla drops the untraded leader's profession.
+        // One leader per settlement; only the unemployed; only on the settlement's ground; only yours.
+        Villager w = villagerAt(level, base.offset(-1, 0, 0));
+        boolean secondRefused = GymDesk.appoint(level, w, null) == GymDesk.Appointment.HAS_LEADER
+                && w.getVillagerData().getProfession() == VillagerProfession.NONE;
+        Villager farmer = villagerAt(level, base.offset(0, 0, 1));
+        farmer.setVillagerData(farmer.getVillagerData().setProfession(VillagerProfession.FARMER));
+        boolean employedRefused = GymDesk.appoint(level, farmer, null) == GymDesk.Appointment.NOT_UNEMPLOYED;
+        BlockPos away = s.footprint() == null ? null
+                : deskSpot(level, new BlockPos(s.footprint().maxX() + 40, base.getY(), base.getZ())).above();
+        Villager stray = away != null && manager.containing(away) == null ? villagerAt(level, away) : null;
+        boolean outsideRefused = stray != null
+                && GymDesk.appoint(level, stray, null) == GymDesk.Appointment.NOT_IN_SETTLEMENT;
+        s.setOwnerId(UUID.nameUUIDFromBytes("terra-towns-desk-audit".getBytes(StandardCharsets.UTF_8)));
+        boolean notYoursRefused = GymDesk.appoint(level, w, null) == GymDesk.Appointment.NOT_YOURS;
+        s.setOwnerId(owner);
+
+        // The player picks the desk up to move it: vanilla forgets the job site; the locked
+        // leader keeps its profession and its post.
         level.setBlock(p1, Blocks.AIR.defaultBlockState(), 3);
         v.getBrain().eraseMemory(net.minecraft.world.entity.ai.memory.MemoryModuleType.JOB_SITE);
-        v.setVillagerData(v.getVillagerData().setProfession(VillagerProfession.NONE));
         com.terraTowns.event.SettlementTickEvents.bindGymLeaderIfNeeded(level.getServer(), level, manager, s);
-        com.terraTowns.settlement.GymDesk.tick(level, s);
-        boolean bindingSurvives = v.getUUID().equals(s.gymLeaderId());
+        GymDesk.tick(level, s);
+        boolean keepsPostWithoutDesk = v.getUUID().equals(s.gymLeaderId())
+                && v.getVillagerData().getProfession() == gymLeader;
 
         // ...and puts it down somewhere else: it goes straight back to the leader.
         BlockPos p2 = deskSpot(level, base.offset(-3, 0, 3));
         placeDesk(level, s, p2);
-        boolean backToLeader = holds(v, p2) && pois.getFreeTickets(p2) == 0;
+        boolean backToLeader = holds(v, p2);
 
-        // A second desk: nobody can claim it, and nothing changes.
+        // A second desk: nothing happens, and nobody has it.
         BlockPos p3 = deskSpot(level, base.offset(0, 0, -4));
         placeDesk(level, s, p3);
-        boolean secondInert = pois.getFreeTickets(p3) == 0 && p2.equals(s.deskPos()) && holds(v, p2);
+        boolean secondInert = p2.equals(s.deskPos()) && holds(v, p2) && pois.getFreeTickets(p3) == 1;
 
-        // Someone else holding the profession here is stood down in the leader's favour.
-        Villager w = net.minecraft.world.entity.EntityType.VILLAGER.spawn(level, base.offset(-1, 0, 0),
-                net.minecraft.world.entity.MobSpawnType.EVENT);
-        w.setVillagerData(w.getVillagerData().setProfession(TerraTownsRegistries.GYM_LEADER_PROFESSION.get()));
-        com.terraTowns.settlement.GymDesk.tick(level, s);
+        // Someone else holding the profession here (a claimant from before 0.5.1) is stood down.
+        w.setVillagerData(w.getVillagerData().setProfession(gymLeader));
+        GymDesk.tick(level, s);
         boolean usurperStoodDown = w.getVillagerData().getProfession() == VillagerProfession.NONE && holds(v, p2);
 
-        // Beaten: locked like a traded villager (vanilla keeps its job with no job site).
-        boolean unlockedBefore = v.getVillagerXp() == 0;
-        s.setGymCleared(true);
-        com.terraTowns.settlement.GymDesk.tick(level, s);
-        boolean locked = unlockedBefore && v.getVillagerXp() > 0;
-
-        // The settlement's desk goes and the spare one still standing takes over — for the leader.
+        // The settlement's desk goes and the spare one still standing takes over, for the leader.
         level.setBlock(p2, Blocks.AIR.defaultBlockState(), 3);
         v.getBrain().eraseMemory(net.minecraft.world.entity.ai.memory.MemoryModuleType.JOB_SITE);
-        com.terraTowns.settlement.GymDesk.tick(level, s);
-        boolean spareTakesOver = p3.equals(s.deskPos()) && holds(v, p3)
-                && v.getVillagerData().getProfession() == TerraTownsRegistries.GYM_LEADER_PROFESSION.get();
+        GymDesk.tick(level, s);
+        boolean spareTakesOver = p3.equals(s.deskPos()) && holds(v, p3);
 
         // A player moving the desk (2026-10-02 crash): placement runs inside the packet task, and
         // vanilla defers registering the new desk's POI until that task ends. So onPlaced, and a
@@ -394,43 +409,60 @@ public final class JobAudit {
         pois.remove(p4); // not registered yet, as during the player's placement
         boolean survivesUnregistered;
         try {
-            com.terraTowns.settlement.GymDesk.onPlaced(level, p4, s);
-            com.terraTowns.settlement.GymDesk.tick(level, s);
+            GymDesk.onPlaced(level, p4, s);
+            GymDesk.tick(level, s);
             survivesUnregistered = true;
         } catch (RuntimeException e) {
             survivesUnregistered = false;
         }
-        pois.add(p4, level.registryAccess().registryOrThrow(net.minecraft.core.registries.Registries.POINT_OF_INTEREST_TYPE)
-                .getHolderOrThrow(TerraTownsRegistries.GYM_LEADERS_DESK_POI_KEY)); // the deferred task runs
-        com.terraTowns.settlement.GymDesk.tick(level, s);
-        boolean playerMoveGoesToLeader = survivesUnregistered && p4.equals(s.deskPos()) && holds(v, p4)
-                && pois.getFreeTickets(p4) == 0;
+        pois.add(p4, deskPoi); // the deferred task runs
+        GymDesk.tick(level, s);
+        boolean playerMoveGoesToLeader = survivesUnregistered && p4.equals(s.deskPos()) && holds(v, p4);
+
+        // The leader dies: the post is vacant, nobody is put in it unasked (a hamlet isn't a
+        // generated village), and a successor can be appointed.
+        v.kill();
+        com.terraTowns.event.SettlementTickEvents.bindGymLeaderIfNeeded(level.getServer(), level, manager, s);
+        boolean deathVacates = s.gymLeaderId() == null;
+        boolean successorAppointed = GymDesk.appoint(level, w, null) == GymDesk.Appointment.APPOINTED
+                && w.getUUID().equals(s.gymLeaderId()) && holds(w, p4);
 
         level.setBlock(p4, Blocks.AIR.defaultBlockState(), 3);
-        v.discard();
-        w.discard();
+        for (Villager x : new Villager[]{v, w, farmer, stray}) {
+            if (x != null) {
+                x.discard();
+            }
+        }
         s.setGymLeaderId(null);
         s.setDeskPos(null);
         s.setGymCleared(false);
 
         Map<String, Object> verdict = new LinkedHashMap<>();
-        verdict.put("firstDeskClaimableWithoutLeader", claimableWithoutLeader);
-        // Villagers can only claim the desk because it is in vanilla's acquirable-job-site tag;
-        // deleting that tag file (0.5.0 dev) left village gyms leaderless, and nothing else noticed.
-        verdict.put("deskIsAcquirableJobSite", level.registryAccess().registryOrThrow(net.minecraft.core.registries.Registries.POINT_OF_INTEREST_TYPE)
-                .getHolder(TerraTownsRegistries.GYM_LEADERS_DESK_POI_KEY)
-                .map(h -> h.is(net.minecraft.tags.PoiTypeTags.ACQUIRABLE_JOB_SITE)).orElse(false));
-        verdict.put("claimantBound", bound);
-        verdict.put("bindingSurvivesDeskMove", bindingSurvives);
+        // Deleting the desk's acquirable-job-site tag (0.5.0 dev) once left gyms leaderless;
+        // since 0.5.1 it is meant to be gone, and a desk must never be claimable again.
+        verdict.put("deskNotClaimableByVillagers", notClaimable);
+        verdict.put("deskHeldAsLeadersJobSite", heldAsJobSite);
+        verdict.put("deskWaitsForLeader", deskWaitsForLeader);
+        verdict.put("appointedLeaderGetsDeskLocked", appointed);
+        verdict.put("secondLeaderRefused", secondRefused);
+        verdict.put("employedVillagerRefused", employedRefused);
+        verdict.put("outsideFootprintRefused", outsideRefused);
+        verdict.put("othersSettlementRefused", notYoursRefused);
+        verdict.put("leaderKeepsPostWithoutDesk", keepsPostWithoutDesk);
         verdict.put("newDeskGoesBackToLeader", backToLeader);
         verdict.put("secondDeskInert", secondInert);
         verdict.put("usurperStoodDown", usurperStoodDown);
-        verdict.put("beatenLeaderLocked", locked);
         verdict.put("spareDeskTakesOverForLeader", spareTakesOver);
         verdict.put("playerMoveSurvivesUnregisteredPoi", survivesUnregistered);
         verdict.put("playerMoveGoesToLeader", playerMoveGoesToLeader);
+        verdict.put("leaderDeathVacatesPost", deathVacates);
+        verdict.put("successorAppointed", successorAppointed);
         out.put("verdict", verdict);
         return out;
+    }
+
+    private static Villager villagerAt(ServerLevel level, BlockPos pos) {
+        return net.minecraft.world.entity.EntityType.VILLAGER.spawn(level, pos, net.minecraft.world.entity.MobSpawnType.EVENT);
     }
 
     /** Admin reassignment (/terraTowns assign) at the data level: move a stand-in player twice. */

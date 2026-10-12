@@ -9,6 +9,7 @@ import net.minecraft.core.Vec3i;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.level.levelgen.structure.BoundingBox;
 import net.minecraft.tags.BlockTags;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.entity.EntityType;
@@ -326,14 +327,18 @@ public final class HamletPiece {
     }
 
     /**
-     * Build the hamlet near {@code origin} and return a safe, on-land spawn position at its
-     * centre (feet on solid ground).
+     * A built hamlet: a safe, on-land spawn position at its centre (feet on solid ground), and
+     * the box around everything placed (the settlement's footprint, 0.5.1).
      */
-    public static BlockPos place(ServerLevel level, BlockPos origin) {
+    public record Built(BlockPos spawn, BoundingBox bounds) {
+    }
+
+    /** Build the hamlet near {@code origin}. */
+    public static Built place(ServerLevel level, BlockPos origin) {
         return new HamletPiece(level, origin).build(origin);
     }
 
-    private BlockPos build(BlockPos origin) {
+    private Built build(BlockPos origin) {
         // The finder reads noise heights, which don't show carved water crags. If the chosen
         // centre actually fell on a below-sea-level crag, slide the whole hamlet to the nearest
         // dry, above-sea column so we never build the spawn (or houses) into water.
@@ -486,7 +491,20 @@ public final class HamletPiece {
                 hamletCenter, houses, placedFarms, villagers, candidates.size());
         HamletAudit.hamlet(level, hamletCenter, PLOT_RADIUS + ROUTE_REACH, houses, placedFarms, villagers,
                 candidates.size(), lighting);
-        return spawn;
+        return new Built(spawn, bounds(footprints, spawn));
+    }
+
+    /** Everything placed, from the spawn's level down 16 to the tallest roof. */
+    private static BoundingBox bounds(List<int[]> footprints, BlockPos spawn) {
+        int minX = spawn.getX(), minZ = spawn.getZ(), maxX = spawn.getX(), maxZ = spawn.getZ(), top = spawn.getY();
+        for (int[] f : footprints) {
+            minX = Math.min(minX, f[0]);
+            minZ = Math.min(minZ, f[1]);
+            maxX = Math.max(maxX, f[2]);
+            maxZ = Math.max(maxZ, f[3]);
+            top = Math.max(top, f[4]);
+        }
+        return new BoundingBox(minX, spawn.getY() - 16, minZ, maxX, top, maxZ);
     }
 
     /**

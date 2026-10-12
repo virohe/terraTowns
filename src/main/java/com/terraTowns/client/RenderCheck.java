@@ -95,8 +95,11 @@ public final class RenderCheck {
             gymVillage = s;
             BlockPos c = s.center();
             // Load the village and find its desk; the scans then adopt and hand it over.
-            BlockPos desk = null;
-            for (BlockPos p : BlockPos.betweenClosed(c.offset(-80, -30, -80), c.offset(80, 30, 80))) {
+            // The recorded desk first: a hillside village's gym can sit far above its centre
+            // (one was 39 blocks up, outside the search below).
+            BlockPos desk = s.deskPos() != null && level.getBlockState(s.deskPos()).is(TerraTownsRegistries.GYM_LEADERS_DESK.get())
+                    ? s.deskPos() : null;
+            for (BlockPos p : desk != null ? java.util.List.<BlockPos>of() : BlockPos.betweenClosed(c.offset(-80, -30, -80), c.offset(80, 30, 80))) {
                 if (level.getBlockState(p).is(TerraTownsRegistries.GYM_LEADERS_DESK.get())) {
                     desk = p.immutable();
                     break;

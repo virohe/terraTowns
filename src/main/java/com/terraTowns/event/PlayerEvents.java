@@ -68,8 +68,9 @@ public final class PlayerEvents {
                 TerraTowns.LOGGER.warn("No hamlet available to assign to {}", playerName);
                 return;
             }
-            BlockPos spawn = HamletPiece.place(overworld, site.get());
-            hamlet = manager.addSpawnHamlet(site.get(), player.getUUID(), spawn, playerName + "'s Hamlet");
+            HamletPiece.Built built = HamletPiece.place(overworld, site.get());
+            hamlet = manager.addSpawnHamlet(site.get(), player.getUUID(), built.spawn(), playerName + "'s Hamlet");
+            hamlet.setFootprint(built.bounds());
         }
 
         BlockPos spawn = hamlet.spawnPoint() != null ? hamlet.spawnPoint() : hamlet.center();

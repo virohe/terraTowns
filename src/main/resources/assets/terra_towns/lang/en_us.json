@@ -43,9 +43,14 @@
   "message.terra_towns.desk.no_settlement": "This desk is not near any settlement.",
   "message.terra_towns.hamlet_shortfall": "[Terra Towns] Only %1$s of %2$s starting hamlets could be placed — no more suitable coastal sites were found nearby. Additional players beyond %1$s will get a hamlet generated on demand elsewhere.",
   "message.terra_towns.influence.gained": "You beat the gym of %s: its influence is yours.",
-  "message.terra_towns.gym_leader.claimed": "A villager has claimed the Gym Leader's Desk in %s and become its gym leader.",
   "message.terra_towns.desk.locked": "The gym leader here must be defeated before you can use this desk.",
-  "message.terra_towns.desk.locked_no_leader": "No villager has claimed this desk as its gym leader yet.",
+  "message.terra_towns.desk.locked_no_leader": "This settlement has no gym leader. Hold a Gym Leader's Desk and right-click an unemployed villager here to appoint one.",
+  "message.terra_towns.appoint.appointed": "You appointed a gym leader for %s.",
+  "message.terra_towns.appoint.not_unemployed": "Only an unemployed adult villager can become gym leader",
+  "message.terra_towns.appoint.not_in_settlement": "This villager isn't in a settlement",
+  "message.terra_towns.appoint.not_yours": "This settlement isn't yours to appoint a gym leader for",
+  "message.terra_towns.appoint.has_leader": "This settlement already has a gym leader",
+  "message.terra_towns.gym_leader.gone": "The gym leader of %s is gone. Hold a Gym Leader's Desk and right-click an unemployed villager there to appoint a new one.",
   "message.terra_towns.challenge.unbound": "This gym leader has no settlement",
   "message.terra_towns.challenge.won": "You defeated the gym leader!",
   "message.terra_towns.challenge.unlocked": "The Gym Leader's Desk is now unlocked.",
@@ -132,6 +137,5 @@
   "sign.terra_towns.plaque.no_type.2": "found",
   "sign.terra_towns.plaque.already.1": "Already has",
   "sign.terra_towns.plaque.already.2": "a plaque",
-  "message.terra_towns.plaque.already": "This building already has a plaque (at %s, %s, %s). One plaque per building.",
-  "message.terra_towns.gym_leader.succeeded": "A new gym leader has taken over %s. Beat them to reclaim the Gym Leader's Desk."
+  "message.terra_towns.plaque.already": "This building already has a plaque (at %s, %s, %s). One plaque per building."
 }

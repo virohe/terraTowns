@@ -127,20 +127,25 @@ public final class TerraTownsRegistries {
             Registries.POINT_OF_INTEREST_TYPE,
             ResourceLocation.fromNamespaceAndPath(TerraTowns.MOD_ID, "gym_leaders_desk"));
 
-    /** The desk as a villager job-site POI (every facing state matches; one villager may claim it). */
+    /**
+     * The desk as a point of interest (every facing state matches), so it can be a gym leader's
+     * job site. Deliberately NOT in vanilla's acquirable-job-site tag (0.5.1): no villager's own
+     * AI ever claims a desk; the leader is given it ({@code GymDesk}).
+     */
     public static final DeferredHolder<PoiType, PoiType> GYM_LEADERS_DESK_POI =
             POI_TYPES.register("gym_leaders_desk", () -> new PoiType(
                     Set.copyOf(GYM_LEADERS_DESK.get().getStateDefinition().getPossibleStates()), 1, 1));
 
     /**
-     * The "gym leader" villager profession — an ordinary villager that has claimed a Gym Leader's
-     * Desk as its job site becomes the settlement's gym leader (see DESIGN.md §2.5).
+     * The "gym leader" villager profession. Appointed, never taken up (0.5.1, {@code GymDesk}):
+     * it holds a desk as its job site (first predicate, which keeps vanilla from forgetting the
+     * desk and walks the leader there to work) but acquires none on its own (second).
      */
     public static final DeferredHolder<VillagerProfession, VillagerProfession> GYM_LEADER_PROFESSION =
             VILLAGER_PROFESSIONS.register("gym_leader", () -> new VillagerProfession(
                     "gym_leader",
                     holder -> holder.is(GYM_LEADERS_DESK_POI_KEY),
-                    holder -> holder.is(GYM_LEADERS_DESK_POI_KEY),
+                    holder -> false,
                     ImmutableSet.<Item>of(),
                     ImmutableSet.<Block>of(),
                     null));
