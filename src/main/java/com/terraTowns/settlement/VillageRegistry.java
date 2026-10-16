@@ -179,7 +179,7 @@ public final class VillageRegistry {
                     || box.getXSpan() < 3 || box.getZSpan() < 3) {
                 continue;
             }
-            out.add(new SettlementData.Structure(box, template, false));
+            out.add(new SettlementData.Structure(box, template, null));
         }
         return out;
     }

@@ -61,7 +61,7 @@ public final class SettlementPromotion {
     private static final List<BuildingCategory> TOWN_BUILDINGS = List.of(
             BuildingCategory.GYM, BuildingCategory.INN_TAVERN, BuildingCategory.FARM_PLOTS, BuildingCategory.SMITHY,
             BuildingCategory.POKECENTER, BuildingCategory.POKEMART, BuildingCategory.MARKET_STALL,
-            BuildingCategory.WAREHOUSE, BuildingCategory.BARRACKS_GUARD_POST);
+            BuildingCategory.STORAGE_CENTER, BuildingCategory.BARRACKS_GUARD_POST);
     /** Workers a town needs per job, in checklist order. */
     private static final List<Object[]> TOWN_WORKERS = List.of(
             new Object[]{SettlementJob.FARMER, 3}, new Object[]{SettlementJob.SMITH, 2},
@@ -125,13 +125,13 @@ public final class SettlementPromotion {
             reqs.add(building(settlement, c));
         }
         reqs.add(buildingCount(settlement, BuildingCategory.HOUSING, TOWN_MIN_HOUSING));
-        reqs.add(req("new_buildings", settlement.buildingsRegisteredSince(SettlementTier.VILLAGE), TOWN_NEW_BUILDINGS));
+        reqs.add(req("new_structures", settlement.buildingsRegisteredSince(SettlementTier.VILLAGE), TOWN_NEW_BUILDINGS));
         List<Villager> residents = residents(level, settlement);
         for (Object[] w : TOWN_WORKERS) {
             SettlementJob job = (SettlementJob) w[0];
             int need = (Integer) w[1];
             int have = (int) residents.stream().filter(v -> job.accepts(v.getVillagerData().getProfession())).count();
-            reqs.add(new Requirement(Component.translatable("promo.terra_towns.req.workers", job.displayName(), have, need),
+            reqs.add(new Requirement(Component.translatable("promo.terra_towns.req.workers." + job.id(), have, need),
                     have >= need));
         }
         reqs.add(req("trades", distinctTrades(residents), TOWN_DISTINCT_TRADES));

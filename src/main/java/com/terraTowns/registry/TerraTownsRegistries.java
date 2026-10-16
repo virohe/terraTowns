@@ -110,6 +110,18 @@ public final class TerraTownsRegistries {
                             .strength(1.0f)
                             .ignitedByLava()));
 
+    /**
+     * The Merchant's counter (0.5.4): its workstation, and what makes a Market Stall. Iron, and
+     * stair-shaped until its own model exists.
+     */
+    public static final DeferredBlock<com.terraTowns.block.MarketCounterBlock> MARKET_COUNTER =
+            BLOCKS.register("market_counter",
+                    () -> new com.terraTowns.block.MarketCounterBlock(BlockBehaviour.Properties.of()
+                            .mapColor(MapColor.METAL)
+                            .strength(3.0f, 6.0f)
+                            .requiresCorrectToolForDrops()
+                            .noOcclusion()));
+
     // --- block entities ----------------------------------------------------
 
     public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<BuildingPlaqueBlockEntity>>
@@ -119,6 +131,15 @@ public final class TerraTownsRegistries {
     public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<GymLeadersDeskBlockEntity>>
             GYM_LEADERS_DESK_BE = BLOCK_ENTITIES.register("gym_leaders_desk",
             () -> BlockEntityType.Builder.of(GymLeadersDeskBlockEntity::new, GYM_LEADERS_DESK.get()).build(null));
+
+    /**
+     * The counter as a point of interest (0.5.4), so a building holding one is found like any
+     * workstation. The Merchant profession that works it arrives in 0.6; until then no villager
+     * can claim it (it is not an acquirable job site).
+     */
+    public static final DeferredHolder<PoiType, PoiType> MARKET_COUNTER_POI =
+            POI_TYPES.register("market_counter", () -> new PoiType(
+                    Set.copyOf(MARKET_COUNTER.get().getStateDefinition().getPossibleStates()), 1, 1));
 
     // --- villager gym leader: desk job-site POI + profession ---------------
 
@@ -212,6 +233,8 @@ public final class TerraTownsRegistries {
             ITEMS.registerSimpleBlockItem(ROUTE_MARKER);
     public static final DeferredItem<BlockItem> BUILDING_PLAQUE_ITEM =
             ITEMS.registerSimpleBlockItem(BUILDING_PLAQUE);
+    public static final DeferredItem<BlockItem> MARKET_COUNTER_ITEM =
+            ITEMS.registerSimpleBlockItem(MARKET_COUNTER);
 
     public static final DeferredItem<DeferredSpawnEggItem> GYM_LEADER_SPAWN_EGG =
             ITEMS.register("gym_leader_spawn_egg",
@@ -233,6 +256,7 @@ public final class TerraTownsRegistries {
                     .displayItems((params, output) -> {
                         output.accept(GYM_LEADERS_DESK_ITEM.get());
                         output.accept(BUILDING_PLAQUE_ITEM.get());
+                        output.accept(MARKET_COUNTER_ITEM.get());
                         output.accept(ROUTE_MARKER_ITEM.get());
                         output.accept(GYM_LEADER_SPAWN_EGG.get());
                         output.accept(PROFESSOR_SPAWN_EGG.get());

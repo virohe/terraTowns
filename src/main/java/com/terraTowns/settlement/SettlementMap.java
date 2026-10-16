@@ -21,8 +21,11 @@ import net.minecraft.world.level.material.MapColor;
  */
 public final class SettlementMap {
 
-    /** Pixels along the longer side, at most: a 190-block village is one block per pixel. */
-    public static final int MAX_SIDE = 192;
+    /**
+     * Pixels along the longer side, at most. 512 since 0.5.4, so a big town stays one block per
+     * pixel and zooming in on it shows real detail (playtest: big towns were hard to read).
+     */
+    public static final int MAX_SIDE = 512;
 
     /**
      * @param originX world x of pixel column 0
@@ -33,7 +36,30 @@ public final class SettlementMap {
     public record Image(int originX, int originZ, int scale, int width, int height, byte[] colors) {
     }
 
+    /**
+     * A villager on the settlement's ground, for the map's building details (0.5.4): what it
+     * does, and where it works and sleeps ({@link Long#MIN_VALUE} for none; packed BlockPos).
+     */
+    public record Resident(String name, String profession, long jobSite, long home) {
+    }
+
     private SettlementMap() {
+    }
+
+    public static java.util.List<Resident> residents(ServerLevel level, SettlementData settlement) {
+        java.util.List<Resident> out = new java.util.ArrayList<>();
+        for (net.minecraft.world.entity.npc.Villager v : level.getEntitiesOfClass(
+                net.minecraft.world.entity.npc.Villager.class, settlement.area(),
+                v -> settlement.covers(v.blockPosition()) && !v.isBaby())) {
+            var brain = v.getBrain();
+            long job = brain.getMemory(net.minecraft.world.entity.ai.memory.MemoryModuleType.JOB_SITE)
+                    .map(g -> g.pos().asLong()).orElse(Long.MIN_VALUE);
+            long home = brain.getMemory(net.minecraft.world.entity.ai.memory.MemoryModuleType.HOME)
+                    .map(g -> g.pos().asLong()).orElse(Long.MIN_VALUE);
+            String name = v.hasCustomName() ? v.getCustomName().getString() : "";
+            out.add(new Resident(name, v.getVillagerData().getProfession().name(), job, home));
+        }
+        return out;
     }
 
     public static Image build(ServerLevel level, SettlementData settlement) {

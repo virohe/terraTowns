@@ -72,6 +72,7 @@ public final class PlayerEvents {
             hamlet = manager.addSpawnHamlet(site.get(), player.getUUID(), built.spawn(), playerName + "'s Hamlet");
             hamlet.setFootprint(built.bounds());
             hamlet.addHouses(built.houses());
+            hamlet.addFarms(built.farms());
             com.terraTowns.structure.BuildingDetection.refreshAll(overworld, hamlet);
         }
 

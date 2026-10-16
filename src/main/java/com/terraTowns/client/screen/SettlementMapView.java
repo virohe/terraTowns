@@ -42,17 +42,32 @@ final class SettlementMapView {
         }
     }
 
+    /** Furthest zoom-in, as a multiple of "the whole settlement fits". */
+    static final float MAX_ZOOM = 8.0F;
+
     private final SettlementMap.Image image;
     @Nullable
     private DynamicTexture texture;
 
-    // Where the picture was last drawn, for turning world positions into screen ones.
+    // The view (0.5.4): how far zoomed in, and which map pixel sits at the viewport's centre.
+    private float zoom = 1.0F;
+    private float centerU;
+    private float centerV;
+
+    // The viewport, and where the picture was last drawn, for turning world positions into
+    // screen ones.
+    private int viewX;
+    private int viewY;
+    private int viewW;
+    private int viewH;
     private float drawX;
     private float drawY;
     private float pixel; // screen pixels per map pixel
 
     SettlementMapView(SettlementMap.Image image) {
         this.image = image;
+        this.centerU = image.width() / 2.0F;
+        this.centerV = image.height() / 2.0F;
     }
 
     private void upload() {
@@ -75,22 +90,88 @@ final class SettlementMapView {
         }
     }
 
-    /** Draw the frame and the picture, as large as fits {@code [x, x+w) × [y, y+h)}. */
+    float zoom() {
+        return zoom;
+    }
+
+    /** Pixels per map pixel when the whole picture fits the viewport. */
+    private float fit() {
+        return Math.min(viewW / (float) image.width(), viewH / (float) image.height());
+    }
+
+    /**
+     * Draw the frame and the picture in {@code [x, x+w) × [y, y+h)}, and start clipping to the
+     * picture's viewport: everything drawn on the map until {@link #endClip} stays inside it.
+     */
     void draw(GuiGraphics g, int x, int y, int w, int h) {
         if (texture == null) {
             upload();
         }
         g.blit(FRAME, x, y, w, h, 0.0F, 0.0F, 64, 64, 64, 64);
-        int innerW = w - 2 * FRAME_INSET;
-        int innerH = h - 2 * FRAME_INSET;
-        pixel = Math.min(innerW / (float) image.width(), innerH / (float) image.height());
-        int pw = Math.round(image.width() * pixel);
-        int ph = Math.round(image.height() * pixel);
-        int px = x + FRAME_INSET + (innerW - pw) / 2;
-        int py = y + FRAME_INSET + (innerH - ph) / 2;
-        drawX = px;
-        drawY = py;
-        g.blit(TEXTURE, px, py, pw, ph, 0.0F, 0.0F, image.width(), image.height(), image.width(), image.height());
+        viewX = x + FRAME_INSET;
+        viewY = y + FRAME_INSET;
+        viewW = w - 2 * FRAME_INSET;
+        viewH = h - 2 * FRAME_INSET;
+        pixel = fit() * zoom;
+        clampCenter();
+        drawX = viewX + viewW / 2.0F - centerU * pixel;
+        drawY = viewY + viewH / 2.0F - centerV * pixel;
+        g.enableScissor(viewX, viewY, viewX + viewW, viewY + viewH);
+        g.pose().pushPose();
+        g.pose().translate(drawX, drawY, 0.0F);
+        g.pose().scale(pixel, pixel, 1.0F);
+        g.blit(TEXTURE, 0, 0, image.width(), image.height(), 0.0F, 0.0F, image.width(), image.height(),
+                image.width(), image.height());
+        g.pose().popPose();
+    }
+
+    void endClip(GuiGraphics g) {
+        g.disableScissor();
+    }
+
+    /** Keep the picture covering the viewport (or centred, where it is smaller than it). */
+    private void clampCenter() {
+        float halfU = viewW / 2.0F / pixel;
+        float halfV = viewH / 2.0F / pixel;
+        centerU = halfU * 2 >= image.width() ? image.width() / 2.0F
+                : Math.max(halfU, Math.min(image.width() - halfU, centerU));
+        centerV = halfV * 2 >= image.height() ? image.height() / 2.0F
+                : Math.max(halfV, Math.min(image.height() - halfV, centerV));
+    }
+
+    boolean overView(double mx, double my) {
+        return mx >= viewX && mx < viewX + viewW && my >= viewY && my < viewY + viewH;
+    }
+
+    /** Zoom by {@code factor}, keeping the point under the cursor where it is (scroll wheel). */
+    void zoomAt(double mx, double my, float factor) {
+        float u = (float) ((mx - drawX) / pixel);
+        float v = (float) ((my - drawY) / pixel);
+        setZoom(zoom * factor);
+        float newPixel = fit() * zoom;
+        centerU = u - (float) (mx - (viewX + viewW / 2.0)) / newPixel;
+        centerV = v - (float) (my - (viewY + viewH / 2.0)) / newPixel;
+    }
+
+    /** Zoom about the viewport's centre (the zoom bar). */
+    void setZoom(float z) {
+        zoom = Math.max(1.0F, Math.min(MAX_ZOOM, z));
+    }
+
+    /** Move the view by a mouse drag of {@code (dx, dy)} screen pixels. */
+    void pan(double dx, double dy) {
+        centerU -= (float) (dx / pixel);
+        centerV -= (float) (dy / pixel);
+    }
+
+    /** Zoom in on a building: centred, filling about half the viewport. */
+    void focus(BoundingBox b) {
+        float spanU = (b.getXSpan()) / (float) image.scale();
+        float spanV = (b.getZSpan()) / (float) image.scale();
+        float want = Math.min(viewW * 0.5F / Math.max(1.0F, spanU), viewH * 0.5F / Math.max(1.0F, spanV));
+        setZoom(want / fit());
+        centerU = (float) ((b.minX() + b.getXSpan() / 2.0 - image.originX()) / image.scale());
+        centerV = (float) ((b.minZ() + b.getZSpan() / 2.0 - image.originZ()) / image.scale());
     }
 
     /** Screen x of world x (the west edge of that block). */
@@ -102,37 +183,34 @@ final class SettlementMapView {
         return drawY + (float) ((worldZ - image.originZ()) / image.scale()) * pixel;
     }
 
-    /** Outline {@code b} in {@code rgb}, two pixels thick when the map is drawn large enough. */
-    void outline(GuiGraphics g, BoundingBox b, int rgb) {
+    /** Outline {@code b} in {@code rgb}, tinted inside; brighter and thicker when selected. */
+    void outline(GuiGraphics g, BoundingBox b, int rgb, boolean selected) {
         int x0 = Math.round(screenX(b.minX()));
         int y0 = Math.round(screenY(b.minZ()));
         int x1 = Math.max(x0 + 2, Math.round(screenX(b.maxX() + 1)));
         int y1 = Math.max(y0 + 2, Math.round(screenY(b.maxZ() + 1)));
-        int c = 0xFF000000 | rgb;
+        int c = selected ? 0xFFFFFFFF : 0xFF000000 | rgb;
         // A light tint inside: at a village's scale a house is a few pixels, and an outline alone
         // was hard to pick out of the trees (render check, 2026-10-12).
-        g.fill(x0, y0, x1, y1, 0x66000000 | rgb);
-        g.fill(x0, y0, x1, y0 + 1, c);
-        g.fill(x0, y1 - 1, x1, y1, c);
-        g.fill(x0, y0, x0 + 1, y1, c);
-        g.fill(x1 - 1, y0, x1, y1, c);
+        g.fill(x0, y0, x1, y1, (selected ? 0x99000000 : 0x66000000) | rgb);
+        int t = selected ? 2 : 1;
+        g.fill(x0, y0, x1, y0 + t, c);
+        g.fill(x0, y1 - t, x1, y1, c);
+        g.fill(x0, y0, x0 + t, y1, c);
+        g.fill(x1 - t, y0, x1, y1, c);
     }
 
-    /** Is the screen point over {@code b} as drawn? */
+    /** Is the screen point over {@code b} as drawn (and inside the viewport)? */
     boolean over(BoundingBox b, double mx, double my) {
-        return mx >= screenX(b.minX()) && mx < Math.max(screenX(b.minX()) + 2, screenX(b.maxX() + 1))
+        return overView(mx, my)
+                && mx >= screenX(b.minX()) && mx < Math.max(screenX(b.minX()) + 2, screenX(b.maxX() + 1))
                 && my >= screenY(b.minZ()) && my < Math.max(screenY(b.minZ()) + 2, screenY(b.maxZ() + 1));
     }
 
-    /** A small square marker centred on a world position, if it's on the map. */
+    /** A small square marker centred on a world position (clipped to the viewport). */
     void marker(GuiGraphics g, double worldX, double worldZ, int fill) {
-        float sx = screenX(worldX);
-        float sy = screenY(worldZ);
-        if (sx < drawX || sy < drawY || sx > drawX + image.width() * pixel || sy > drawY + image.height() * pixel) {
-            return;
-        }
-        int x = Math.round(sx);
-        int y = Math.round(sy);
+        int x = Math.round(screenX(worldX));
+        int y = Math.round(screenY(worldZ));
         g.fill(x - 3, y - 3, x + 3, y + 3, 0xFF000000);
         g.fill(x - 2, y - 2, x + 2, y + 2, fill);
     }
@@ -164,7 +242,7 @@ final class SettlementMapView {
             if (!st.workstations().isEmpty()) {
                 tip.add(Component.translatable("screen.terra_towns.desk.map.workstations", workstations(st.workstations())));
             }
-            tip.add(Component.translatable(st.housingOnly() ? "screen.terra_towns.desk.map.came_with_hamlet"
+            tip.add(Component.translatable(st.onlyAs() != null ? "screen.terra_towns.desk.map.came_with_hamlet"
                     : "screen.terra_towns.desk.map.came_with_village").withStyle(s -> s.withColor(0xFFAAAAAA)));
             out.add(new Building(st.box(), st.type(), tip));
         }

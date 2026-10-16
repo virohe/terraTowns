@@ -91,8 +91,6 @@ public final class SettlementData {
      * so a village's buildings count without plaques. A plaque hung inside one overrides it.
      */
     private final List<Structure> structures = new ArrayList<>();
-    /** Round-robin position of the detection re-check; not saved. */
-    private int detectionCursor;
 
     /**
      * Settlement jobs unlocked so far (0.4). Persisted rather than recomputed on demand so an
@@ -364,17 +362,15 @@ public final class SettlementData {
     /** A spawn hamlet's houses, as built: structures that only ever count as Housing. */
     public void addHouses(List<BoundingBox> houses) {
         for (BoundingBox b : houses) {
-            structures.add(new Structure(b, "terra_towns:hamlet/house", true));
+            structures.add(new Structure(b, "terra_towns:hamlet/house", BuildingCategory.HOUSING));
         }
     }
 
-    /** Next index for the detection re-check to look at (wraps); -1 with no structures. */
-    public int nextDetectionIndex() {
-        if (structures.isEmpty()) {
-            return -1;
+    /** A spawn hamlet's crop farms and animal pens, as built (0.5.4): only ever Farms. */
+    public void addFarms(List<BoundingBox> farms) {
+        for (BoundingBox b : farms) {
+            structures.add(new Structure(b, "terra_towns:hamlet/farm", BuildingCategory.FARM_PLOTS));
         }
-        detectionCursor = (detectionCursor + 1) % structures.size();
-        return detectionCursor;
     }
 
     /** Where every plaque's survey started: a structure containing one is the plaque's building. */
@@ -688,8 +684,8 @@ public final class SettlementData {
     /**
      * A structure that came with the settlement (0.5.2) and what it was last found to be.
      *
-     * <p>{@code housingOnly}: a spawn hamlet's house, which only ever counts as Housing (its
-     * villagers are unemployed but for a few farmers; user, 2026-10-12). {@code type} is null
+     * <p>{@code onlyAs}: what a spawn hamlet's piece can only ever be: a house is Housing (its
+     * villagers are unemployed but for a few farmers; user, 2026-10-12), a farm or pen Farms. {@code type} is null
      * until classified, or when the structure holds nothing a building type needs (a decoration,
      * a well). {@code plaqued}: a plaque hangs inside it, and the plaque's building is the one
      * that counts.</p>
@@ -697,18 +693,21 @@ public final class SettlementData {
     public static final class Structure {
         private final BoundingBox box;
         private final String template;
-        private final boolean housingOnly;
+        @Nullable
+        private final BuildingCategory onlyAs;
         @Nullable
         private BuildingCategory type;
         private int beds;
         private List<String> workstations = List.of();
         private boolean classified;
         private boolean plaqued;
+        /** A block inside changed since it was last classified (not saved). */
+        private boolean dirty;
 
-        public Structure(BoundingBox box, String template, boolean housingOnly) {
+        public Structure(BoundingBox box, String template, @Nullable BuildingCategory onlyAs) {
             this.box = box;
             this.template = template;
-            this.housingOnly = housingOnly;
+            this.onlyAs = onlyAs;
         }
 
         public BoundingBox box() {
@@ -719,8 +718,10 @@ public final class SettlementData {
             return template;
         }
 
-        public boolean housingOnly() {
-            return housingOnly;
+        /** The one type this structure can be (a spawn hamlet's piece), or null. */
+        @Nullable
+        public BuildingCategory onlyAs() {
+            return onlyAs;
         }
 
         @Nullable
@@ -750,6 +751,14 @@ public final class SettlementData {
             return classified && type != null && !plaqued;
         }
 
+        public boolean dirty() {
+            return dirty;
+        }
+
+        public void markDirty() {
+            dirty = true;
+        }
+
         /** @return true if anything changed. */
         public boolean update(@Nullable BuildingCategory type, int beds, List<String> workstations, boolean plaqued) {
             boolean changed = !classified || this.type != type || this.beds != beds
@@ -759,6 +768,7 @@ public final class SettlementData {
             this.workstations = List.copyOf(workstations);
             this.plaqued = plaqued;
             this.classified = true;
+            this.dirty = false;
             return changed;
         }
 
@@ -766,8 +776,8 @@ public final class SettlementData {
             CompoundTag tag = new CompoundTag();
             tag.putIntArray("Box", boxToInts(box));
             tag.putString("Template", template);
-            if (housingOnly) {
-                tag.putBoolean("HousingOnly", true);
+            if (onlyAs != null) {
+                tag.putString("OnlyAs", onlyAs.id());
             }
             if (classified) {
                 tag.putBoolean("Classified", true);
@@ -786,8 +796,10 @@ public final class SettlementData {
         }
 
         static Structure fromNbt(CompoundTag tag) {
-            Structure st = new Structure(boxFromInts(tag.getIntArray("Box")), tag.getString("Template"),
-                    tag.getBoolean("HousingOnly"));
+            // "HousingOnly" was how 0.5.2-0.5.3 saved a hamlet house.
+            BuildingCategory onlyAs = tag.contains("OnlyAs") ? BuildingCategory.byId(tag.getString("OnlyAs"))
+                    : tag.getBoolean("HousingOnly") ? BuildingCategory.HOUSING : null;
+            Structure st = new Structure(boxFromInts(tag.getIntArray("Box")), tag.getString("Template"), onlyAs);
             if (tag.getBoolean("Classified")) {
                 List<String> ws = new ArrayList<>();
                 ListTag list = tag.getList("Workstations", Tag.TAG_STRING);

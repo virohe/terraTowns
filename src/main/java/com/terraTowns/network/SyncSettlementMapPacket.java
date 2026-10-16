@@ -12,10 +12,11 @@ import java.util.UUID;
 
 /**
  * Server → client: the desk's settlement map picture (0.5.3, {@link SettlementMap}), sent with
- * the rest of the desk sync when the desk opens. About one byte per block of the footprint:
- * ~35 KB for a large village.
+ * the rest of the desk sync when the desk opens, with the villagers on the settlement's ground
+ * (0.5.4). One byte per block of the footprint: ~35 KB for a large village, at most 256 KB.
  */
-public record SyncSettlementMapPacket(UUID settlementId, SettlementMap.Image image) implements CustomPacketPayload {
+public record SyncSettlementMapPacket(UUID settlementId, SettlementMap.Image image,
+                                      java.util.List<SettlementMap.Resident> residents) implements CustomPacketPayload {
 
     public static final Type<SyncSettlementMapPacket> TYPE =
             new Type<>(ResourceLocation.fromNamespaceAndPath(TerraTowns.MOD_ID, "sync_settlement_map"));
@@ -30,6 +31,13 @@ public record SyncSettlementMapPacket(UUID settlementId, SettlementMap.Image ima
                 buf.writeVarInt(i.width());
                 buf.writeVarInt(i.height());
                 buf.writeByteArray(i.colors());
+                buf.writeVarInt(pkt.residents.size());
+                for (SettlementMap.Resident r : pkt.residents) {
+                    buf.writeUtf(r.name());
+                    buf.writeUtf(r.profession());
+                    buf.writeLong(r.jobSite());
+                    buf.writeLong(r.home());
+                }
             },
             buf -> {
                 UUID id = UUIDUtil.STREAM_CODEC.decode(buf);
@@ -39,7 +47,13 @@ public record SyncSettlementMapPacket(UUID settlementId, SettlementMap.Image ima
                 int width = buf.readVarInt();
                 int height = buf.readVarInt();
                 byte[] colors = buf.readByteArray(width * height);
-                return new SyncSettlementMapPacket(id, new SettlementMap.Image(originX, originZ, scale, width, height, colors));
+                int n = buf.readVarInt();
+                java.util.List<SettlementMap.Resident> residents = new java.util.ArrayList<>(n);
+                for (int k = 0; k < n; k++) {
+                    residents.add(new SettlementMap.Resident(buf.readUtf(), buf.readUtf(), buf.readLong(), buf.readLong()));
+                }
+                return new SyncSettlementMapPacket(id, new SettlementMap.Image(originX, originZ, scale, width, height, colors),
+                        residents);
             });
 
     @Override

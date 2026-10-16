@@ -309,6 +309,8 @@ public final class HamletPiece {
     private List<int[]> placedFootprints = List.of();
     /** Each house placed, as built (0.5.2): the settlement registers them as Housing. */
     private final List<BoundingBox> houseBoxes = new ArrayList<>();
+    /** Each crop farm and animal pen placed (0.5.4): registered as Farms. */
+    private final List<BoundingBox> farmBoxes = new ArrayList<>();
     /**
      * Live bury/stilt caps. Normally {@link #MAX_BURY}/{@link #MAX_STILT}; raised by one for a
      * single retry pass when a site is too rough to seat a believable hamlet (see
@@ -332,7 +334,7 @@ public final class HamletPiece {
      * A built hamlet: a safe, on-land spawn position at its centre (feet on solid ground), and
      * the box around everything placed (the settlement's footprint, 0.5.1).
      */
-    public record Built(BlockPos spawn, BoundingBox bounds, List<BoundingBox> houses) {
+    public record Built(BlockPos spawn, BoundingBox bounds, List<BoundingBox> houses, List<BoundingBox> farms) {
     }
 
     /** Build the hamlet near {@code origin}. */
@@ -493,7 +495,7 @@ public final class HamletPiece {
                 hamletCenter, houses, placedFarms, villagers, candidates.size());
         HamletAudit.hamlet(level, hamletCenter, PLOT_RADIUS + ROUTE_REACH, houses, placedFarms, villagers,
                 candidates.size(), lighting);
-        return new Built(spawn, bounds(footprints, spawn), List.copyOf(houseBoxes));
+        return new Built(spawn, bounds(footprints, spawn), List.copyOf(houseBoxes), List.copyOf(farmBoxes));
     }
 
     /** Everything placed, from the spawn's level down 16 to the tallest roof. */
@@ -638,9 +640,12 @@ public final class HamletPiece {
                     placed.minX() + sizeR.getX() - 1, placed.minZ() + sizeR.getZ() - 1,
                     placed.baseY() + placed.sizeY()});
             villagerSpots.addAll(placed.villagerSpots());
+            BoundingBox built = new BoundingBox(placed.minX(), placed.baseY(), placed.minZ(),
+                    placed.minX() + sizeR.getX() - 1, placed.baseY() + placed.sizeY(), placed.minZ() + sizeR.getZ() - 1);
             if (path.contains("_house_")) {
-                houseBoxes.add(new BoundingBox(placed.minX(), placed.baseY(), placed.minZ(),
-                        placed.minX() + sizeR.getX() - 1, placed.baseY() + placed.sizeY(), placed.minZ() + sizeR.getZ() - 1));
+                houseBoxes.add(built);
+            } else if (path.contains("farm") || path.contains("animal_pen")) {
+                farmBoxes.add(built);
             }
 
             if (layPath && placed.approach() != null) {

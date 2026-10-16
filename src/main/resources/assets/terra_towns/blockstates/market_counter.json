@@ -1,0 +1,22 @@
+{
+  "variants": {
+    "facing=north": {
+      "model": "terra_towns:block/market_counter",
+      "y": 90,
+      "uvlock": true
+    },
+    "facing=south": {
+      "model": "terra_towns:block/market_counter",
+      "y": 270,
+      "uvlock": true
+    },
+    "facing=west": {
+      "model": "terra_towns:block/market_counter"
+    },
+    "facing=east": {
+      "model": "terra_towns:block/market_counter",
+      "y": 180,
+      "uvlock": true
+    }
+  }
+}

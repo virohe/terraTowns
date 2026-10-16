@@ -62,7 +62,7 @@ public final class ClientPacketHandlers {
         Minecraft mc = Minecraft.getInstance();
         if (mc.screen instanceof GymLeadersDeskScreen desk
                 && desk.settlementId().equals(packet.settlementId())) {
-            desk.setMap(packet.image());
+            desk.setMap(packet.image(), packet.residents());
         }
     }
 

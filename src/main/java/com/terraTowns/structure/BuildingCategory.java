@@ -23,7 +23,11 @@ public enum BuildingCategory {
     // Civic and economic buildings.
     INN_TAVERN("inn_tavern", 0xB0703A),
     MARKET_STALL("market_stall", 0xE8B23A),
-    WAREHOUSE("warehouse", 0x8A7A5C),
+    /**
+     * Storage Center (0.5.4, was Warehouse): chests worth 20 single chests. Its id changed with
+     * its name; saves holding "warehouse" read back as this ({@link #byId}).
+     */
+    STORAGE_CENTER("storage_center", 0x8A7A5C),
     BARRACKS_GUARD_POST("barracks_guard_post", 0x7A8794),
     FARM_PLOTS("farm_plots", 0x7CC444),
 
@@ -40,6 +44,14 @@ public enum BuildingCategory {
     LIBRARY("library", 0x2E6F9E),
     /** A cleric's brewing stand (0.5.2). */
     TEMPLE("temple", 0xC9A0F0),
+    /** A fisherman's barrel (0.5.4): until then a barrel made Farm Plots. */
+    FISHERY("fishery", 0x3A7BBF),
+    /** A mason's stonecutter (0.5.4). */
+    WORKSHOP("workshop", 0xA39A8E),
+    /** A butcher's smoker (0.5.4). */
+    BUTCHERS_SHOP("butchers_shop", 0xB5443A),
+    /** A shepherd's loom (0.5.4). */
+    LOOM_SHED("loom_shed", 0xE0E0E0),
 
     /**
      * Somewhere to sleep (0.5.2): a building with a bed and nothing more specific. Mandatory at
@@ -67,6 +79,9 @@ public enum BuildingCategory {
 
     /** @return the category with this {@link #id()}, or {@link #GYM} if unknown. */
     public static BuildingCategory byId(String id) {
+        if (id.equals("warehouse")) {
+            return STORAGE_CENTER; // renamed in 0.5.4
+        }
         for (BuildingCategory c : values()) {
             if (c.id.equals(id)) {
                 return c;

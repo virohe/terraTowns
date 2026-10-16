@@ -119,6 +119,26 @@ farmers). Each step up asks for something different:
 beds ≥ 1.15 × the larger of the step's minimum population and the settlement's actual population,
 rounded up (12, 23 and 46 at the minimums). The gym and a rival win stay part of every step.
 
+**Building types and their workstations** (user's decisions, 2026-10-16; 0.5.4). A building is
+typed by the workstation it holds; job categories are a separate grouping (0.5.5).
+
+| Building | Made by |
+|---|---|
+| Farms | composter, beehive (beekeeper), manger (rancher, 0.5.6); a generated animal pen or farm, and a hamlet's farms and pens, by what they are |
+| Smithy | smithing table, blast furnace, grindstone, fletching table, cauldron (leatherworker) |
+| Library | lectern, cartography table |
+| Temple | brewing stand |
+| Fishery | barrel |
+| Workshop | stonecutter |
+| Butcher's Shop | smoker |
+| Loom Shed | loom |
+| Storage Center | chests worth 20 single chests (a double chest counts as 2) |
+| Market Stall | the Merchant's counter (placeholder model: iron stairs; the Merchant arrives in 0.6) |
+| Inn | 3 beds |
+| Guard Post | target block |
+| Housing | a bed |
+| Gym, Pokécentre, Pokémart | desk; healing machine or PC; display case or TM machine |
+
 **v2.5 "blueprint" model:** plaques are augmented by Create-schematic-style blueprints and
 minimum-size validation (farm-plot area, bed/housing counts, guard-post size). The
 `BuildingRegistry.validateMinimums` hook already exists so the upgrade doesn't change the
@@ -178,6 +198,30 @@ path blocks live in the world. Foot paths are marked with **route-marker signs**
 (`route_marker` block); rail corridors unlock when both endpoints are towns with a station.
 Rendering is client-side from the marker blocks plus (later) a map overlay — no per-block
 entity required.
+
+### 2.8 Merchants (0.6, user's design 2026-10-16)
+
+A Merchant is a villager profession of its own, worked at the Market Stall's counter. It does not
+make anything: it sells what the village's **workers** (every other trade) make.
+
+- **What it sells:** the owner picks which items, from the items the village's workers trade. Not
+  Cobblemon items (those are the Pokémart's, later).
+- **Price:** default is the HIGHEST price any worker asks for the item plus 10%, rounded up
+  against the buyer (bread at 2, 4 and 5 emeralds defaults to 7 [5 +10% → 6, see note]; 1 emerald
+  becomes 2; 50 items per emerald becomes 55). The owner may lower it, but not below the LOWEST
+  worker price. *Note: the user's example said 7 for a top price of 5; the rule (+10%, rounded up)
+  gives 6. Confirm when 0.6 starts.*
+- **Stock:** the merchant acquires it; nothing is granted. When a worker restocks, whatever of its
+  previous stock the players did not buy goes to the merchant (a farmer selling 8 bread who sold 2
+  sends 6). The merchant holds up to 8x a worker's restock per worker and item (64 bread each from
+  three farmers: 192).
+- **Revenue:** emeralds the merchant takes in collect in an "emeralds made" section of its trade
+  screen, and the owner moves them into their inventory.
+- **Passive sales:** merchants also sell to the village's other villagers over time, so a stall
+  always earns something; this uses up stock.
+- **Who trades with whom:** the player with influence over the settlement trades with every
+  villager in it; anyone else trades only with its merchants.
+- **Workstation:** a custom block; until its model exists, the iron-stairs model.
 
 ---
 
@@ -247,9 +291,10 @@ a single place.
 | **0.2** | Checklist | Gym Leader's Desk block entity + screen; live town-progress checklist; network sync of settlement/influence state. |
 | **0.3** | Town founding | Found a town from scratch (sparse/missing villages): all 6 categories + gym leader + housing/beds/farms; village→town upgrade flow. |
 | **0.4** | Job assignment | Villager job unlocks (Farmer, Smith, Guard, Merchant, Builder) after gym clear; rival NPC pool that scales across settlements. *(0.4.0: unlock + staffing rules — `SettlementJob`, `JobBoard`, `/terraTowns jobs`. 0.4.1: rival pool — `RivalPool`, `RivalPosting`, `RivalEntity`; one rival per player, rank scaling with influence breadth + defeat history. 0.4.4: placement rule rebuilt on vanilla's entrance geometry, vanilla well as the hamlet centre. 0.4.5: survival recipes for the desk / plaque / route marker; one plaque registers one building; vanilla creative-style desk UI with each job's workstations. 0.4.6: plaque = wall sign naming its building, workstation-based survey with claims; gym succession re-locks the desk; beaten rival stays away a day and each promotion needs a rival win at that tier; hamlets fell whole trees, path into the well plaza, and place lamps until no ground is dark. 0.4.7: one plaque per building (a building owns all its workstations); market stall / guard post and their jobs open at village tier; a registered gym is required for every promotion; walkways routed by A* around pieces; plot clearing can no longer touch placed pieces; 3-8 path-side lamps instead of full coverage; dedicated servers build starting hamlets one per tick. 0.4.8: one Gym Leader's Desk per settlement (a second is inert), the bound leader keeps its binding when the desk is moved and is handed the new desk first, a beaten leader is locked in like a traded villager (GymDesk); cramped sites rejected by the finder; tree clear fells modded growth (stems, petal blocks, fungi) and never cuts a giant partway; pens and farms level their interiors and bury at most 1; /terraTowns assign <player> <index>.)* |
-| **0.5** | Villages | Generated villages join the system: every village (vanilla's five styles and BWG's six) generates exactly one gym, injected into its houses pool with a Lithostitched forced count so it sits on the streets; the gym brings its desk and the village spawns its leader; the village registers as an unowned village-tier settlement, and the first player to beat its gym holds its influence. Pok&eacute;centers capped at one per village. *(0.5.0: placeholder gym, `VillageRegistry`, `VillageAudit`. 0.5.3: the desk's settlement map (tier-titled; No outline / Buildings with a type legend / Sections), Progress tab; released with 0.5.2. 0.5.2: generated buildings detected (by workstation; beds only = Housing), Housing/Library/Temple types, the new promotion ladder. 0.5.1: gym leaders are appointed, never recruited: right-click an unemployed villager holding a desk, or an unowned village spawns one; no villager can claim a desk; leaders locked from appointment; the post falls vacant only on death; settlements have footprints, `GymDesk`.)* |
-| **0.6** | Story | The opening flow (user's design, 2026-10-02): the Professor at your hamlet's well sends you to the nearest village, gives you your starter there, and walks you through the gym, the desk and the town upgrade; the desk recipe stays locked until your continent's villages are connected. Dialogue screens first, camera scenes later. Also the load-time pass, once the 0.5 features are complete (user, 2026-10-12): the starting-hamlet site search and builds spread across ticks (TT-210; 44-55 s and 30-42 s per hamlet in the real pack). |
-| **0.7** | Train station | Stations only from the Professor (one per town promotion; Create's station recipe removed) and placeable only near a town (`CreateHook`). |
+| **0.5** | Villages | Generated villages join the system: every village (vanilla's five styles and BWG's six) generates exactly one gym, injected into its houses pool with a Lithostitched forced count so it sits on the streets; the gym brings its desk and the village spawns its leader; the village registers as an unowned village-tier settlement, and the first player to beat its gym holds its influence. Pok&eacute;centers capped at one per village. *(0.5.0: placeholder gym, `VillageRegistry`, `VillageAudit`. 0.5.4: map zoom, pan and click-for-details; building types by workstation (Fishery, Workshop, Butcher's Shop, Loom Shed, Storage Center, Market Counter); farms and pens counted; detection on block change. 0.5.3: the desk's settlement map (tier-titled; No outline / Buildings with a type legend / Sections), Progress tab; released with 0.5.2. 0.5.2: generated buildings detected (by workstation; beds only = Housing), Housing/Library/Temple types, the new promotion ladder. 0.5.1: gym leaders are appointed, never recruited: right-click an unemployed villager holding a desk, or an unowned village spawns one; no villager can claim a desk; leaders locked from appointment; the post falls vacant only on death; settlements have footprints, `GymDesk`.)* |
+| **0.6** | Merchants | The Merchant villager and the Market Stall (user's design, 2026-10-16; see §2.8): merchants sell what the village's workers trade, stocked from their overstock, at prices the owner sets; outsiders trade only with merchants. |
+| **0.7** | Story | The opening flow (user's design, 2026-10-02): the Professor at your hamlet's well sends you to the nearest village, gives you your starter there, and walks you through the gym, the desk and the town upgrade; the desk recipe stays locked until your continent's villages are connected. Dialogue screens first, camera scenes later. Also the load-time pass, once the 0.5 features are complete (user, 2026-10-12): the starting-hamlet site search and builds spread across ticks (TT-210; 44-55 s and 30-42 s per hamlet in the real pack). |
+| **0.8** | Train station | Stations only from the Professor (one per town promotion; Create's station recipe removed) and placeable only near a town (`CreateHook`). |
 | **1.0** | Release | Full hamlet→village→town loop; routes (foot path + markers → rail); biome-typed gyms; Cobblemon battle/heal/badge integration solid. |
 | **1.5** | Animation | GeckoLib trainer overhaul: pokeball throws, fear reactions, full villager-as-trainer behaviour. |
 | **2.0** | Town needs / City | City tier + Elite Four/Battle Facility; town-needs upkeep; gym-raid/downgrade rules. |

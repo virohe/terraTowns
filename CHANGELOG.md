@@ -5,6 +5,38 @@ Entries before 0.4.8 were reconstructed on 2026-09-27 from DESIGN.md and session
 project had no version control until then. Snapshots of 0.3.13 (partial) and 0.4.0+ are in
 `releases/terra-towns/`.
 
+## 0.5.4 — 2026-10-16
+Playtest fixes for 0.5.3, and the building types settled on 2026-10-16.
+- **Map zoom.** Scroll over the map to zoom in and out on the cursor, or use the zoom bar
+  (+, a draggable track, −) in its corner; drag the map to pan. Big towns are sent at full
+  resolution now (up to 512 blocks across at one block per pixel), so zooming in shows real detail.
+- **Click a building on the map** to zoom in on it and see its details where the legend goes: its
+  type, beds, workstations, whether it came with the settlement or has a plaque, and which villagers
+  work and sleep there. The × closes it. (`SettlementMap.residents`)
+- **Building types by workstation** (DESIGN.md §2.3): Farms (composter, beehive), Smithy (smithing
+  table, blast furnace, grindstone, fletching table, cauldron), Library (lectern, cartography table),
+  Temple (brewing stand), and new **Fishery** (barrel), **Workshop** (stonecutter), **Butcher's
+  Shop** (smoker) and **Loom Shed** (loom). A fisherman's barrel no longer makes Farms, nor a smoker
+  a Market Stall. Farm Plots is now called Farms.
+- **Storage Center** replaces Warehouse: chests worth 20 single chests (a double chest counts as
+  2). Saves holding a Warehouse read it back as a Storage Center.
+- **Market Counter** (new block, iron-stair placeholder model; 6 iron ingots in a stair pattern):
+  what makes a Market Stall. The Merchant who works it arrives in 0.6.
+- **Farms that are farms** (playtest: a village whose only farms were animal pens had none):
+  vanilla puts a composter in every crop farm but nothing in a pen, so generated farms and pens now
+  count as Farms by what they are (BWG's Salem pens are walled with stone, not fences). A spawn hamlet's farms and
+  pens are recorded and count as Farms (hamlets built before 0.5.4 didn't record them).
+- **Detection follows block changes** instead of re-checking a few structures every scan: a
+  structure is re-checked when a block in it changes (placing, breaking, explosions, pistons), and
+  every structure when the desk opens or a gym is challenged.
+- **Checklist:** "New structures", "Beat the rivals", "Pokémart merchants working", and completed
+  requirements move to the end of the list.
+- The Rival spawn egg has its item model (TT-211).
+- Tests: the `buildings` stage adds hamlet farms as Farms, block changes marking a structure dirty,
+  a barrel making a Fishery, the 20-chest Storage Center, and a generated pen as Farms; the plaques
+  stage uses a composter for its farm workstation and sets the hamlet's own structures aside.
+  `runRenderCheck` also screenshots a building selected on the map (`rendercheck-map-detail.png`).
+
 ## 0.5.3 — 2026-10-12
 The desk gets a map of the settlement (user's design, 2026-10-12). Released together with 0.5.2,
 which was not released on its own.

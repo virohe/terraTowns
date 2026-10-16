@@ -1,6 +1,6 @@
 package com.terraTowns.structure;
 
-import com.terraTowns.settlement.SettlementJob;
+import com.terraTowns.registry.TerraTownsRegistries;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.Registry;
@@ -13,27 +13,28 @@ import net.minecraft.world.entity.ai.village.poi.PoiType;
 import net.minecraft.world.entity.npc.VillagerProfession;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.BedBlock;
+import net.minecraft.world.level.block.ChestBlock;
+import net.neoforged.neoforge.common.Tags;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.BedPart;
 import net.minecraft.world.level.levelgen.Heightmap;
 
 import java.util.ArrayDeque;
-import java.util.EnumMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Supplier;
 
 /**
  * What a Building Plaque is actually in: the room it hangs in, and which building types that
  * room qualifies for.
  *
  * <p><b>The rule</b> (playtest request, 2026-09-26): a plaque can only name a building type the
- * building has the workstation for. For the job buildings that falls straight out of the job
- * table — a building qualifies as a Smithy if it holds any workstation a Smith can work at,
- * as Farm Plots if it holds any Farmer workstation (composter, barrel or loom), and so on — so
- * one table, {@link SettlementJob}, drives both. The other types each name their own anchor
- * block below. A room with a loom and a smithing table offers exactly Farm Plots and Smithy.</p>
+ * building has the workstation for: a Smithy any smith's workstation (smithing table, blast
+ * furnace, grindstone, fletching table, cauldron), Farms a composter or beehive, and so on
+ * ({@link #WORKSTATIONS}, {@link #ANCHORS}; 0.5.4). A room with a loom and a smithing table offers
+ * exactly Smithy and Loom Shed. Detection of generated buildings reads the same table.</p>
  *
  * <p><b>The room</b> is found by flooding the open space next to the plaque. A wall sign faces
  * into the room it is mounted in, so the space in front of it is tried first; if that space
@@ -170,19 +171,29 @@ public final class BuildingSurvey {
 
     // --- which building types a room qualifies for --------------------------------------------
 
-    /** Building types that are job buildings, and the job each one houses. */
-    private static final Map<BuildingCategory, SettlementJob> JOB_BUILDINGS = new EnumMap<>(BuildingCategory.class);
-
-    static {
-        for (SettlementJob job : SettlementJob.values()) {
-            JOB_BUILDINGS.putIfAbsent(job.unlockedBy(), job);
-        }
-    }
+    /**
+     * Which villagers' workstations make which building (user's table, 2026-10-16; DESIGN.md
+     * §2.3). A building is typed by the workstation it holds; how jobs group the trades is a
+     * separate matter ({@code SettlementJob}). Supplied, not stored: Terra Towns' own Guard
+     * profession doesn't exist yet when this class loads. Before 0.5.4 this followed the job
+     * table, so a fisherman's barrel made Farm Plots and a butcher's smoker a Market Stall.
+     */
+    private static final Map<BuildingCategory, Supplier<List<VillagerProfession>>> WORKSTATIONS = Map.of(
+            BuildingCategory.FARM_PLOTS, () -> List.of(VillagerProfession.FARMER),
+            BuildingCategory.SMITHY, () -> List.of(VillagerProfession.TOOLSMITH, VillagerProfession.WEAPONSMITH,
+                    VillagerProfession.ARMORER, VillagerProfession.FLETCHER, VillagerProfession.LEATHERWORKER),
+            BuildingCategory.LIBRARY, () -> List.of(VillagerProfession.LIBRARIAN, VillagerProfession.CARTOGRAPHER),
+            BuildingCategory.TEMPLE, () -> List.of(VillagerProfession.CLERIC),
+            BuildingCategory.FISHERY, () -> List.of(VillagerProfession.FISHERMAN),
+            BuildingCategory.WORKSHOP, () -> List.of(VillagerProfession.MASON),
+            BuildingCategory.BUTCHERS_SHOP, () -> List.of(VillagerProfession.BUTCHER),
+            BuildingCategory.LOOM_SHED, () -> List.of(VillagerProfession.SHEPHERD),
+            BuildingCategory.BARRACKS_GUARD_POST, () -> List.of(TerraTownsRegistries.GUARD_PROFESSION.get()));
 
     /**
-     * Anchor blocks for the building types no job defines. Only these are hand-picked; see the
-     * class doc. BATTLE_FACILITY has none yet — it is city-tier and not designed. The Guard Post
-     * had the bell until 0.4.12, when the Guard job got its workstation (the target block).
+     * Blocks that make a building without being any vanilla profession's workstation. The
+     * beehive is the beekeeper's (Friends &amp; Foes) and stands for it whether or not that mod is
+     * installed. BATTLE_FACILITY has none yet: it is city-tier and not designed.
      */
     private static final Map<BuildingCategory, List<ResourceLocation>> ANCHORS = Map.of(
             BuildingCategory.GYM, List.of(ResourceLocation.fromNamespaceAndPath("terra_towns", "gym_leaders_desk")),
@@ -190,7 +201,20 @@ public final class BuildingSurvey {
                     ResourceLocation.fromNamespaceAndPath("cobblemon", "pc")),
             BuildingCategory.POKEMART, List.of(ResourceLocation.fromNamespaceAndPath("cobblemon", "display_case"),
                     ResourceLocation.fromNamespaceAndPath("cobblemon", "tm_machine")),
+            BuildingCategory.MARKET_STALL, List.of(ResourceLocation.fromNamespaceAndPath("terra_towns", "market_counter")),
+            BuildingCategory.FARM_PLOTS, List.of(ResourceLocation.withDefaultNamespace("beehive")),
             BuildingCategory.TRAIN_STATION, List.of(ResourceLocation.fromNamespaceAndPath("create", "track_station")));
+
+    /**
+     * A Storage Center holds chests worth this many single chests (user, 2026-10-16): each chest
+     * block counts one, so a double chest counts two and ten of them are enough.
+     */
+    public static final int STORAGE_MIN_CHESTS = 20;
+
+    /** How many of its blocks a building type needs: 20 chests, else one. */
+    public static int minimum(BuildingCategory category) {
+        return category == BuildingCategory.STORAGE_CENTER ? STORAGE_MIN_CHESTS : 1;
+    }
 
     /** @return every building type {@code room} qualifies for, in enum order. */
     public static List<BuildingCategory> qualifying(ServerLevel level, Result room) {
@@ -206,7 +230,8 @@ public final class BuildingSurvey {
         if (category == BuildingCategory.HOUSING) {
             return room.beds().size() >= HOUSING_MIN_BEDS;
         }
-        return !backing(level, room, category).isEmpty();
+        Set<BlockPos> blocks = backing(level, room, category);
+        return !blocks.isEmpty() && blocks.size() >= minimum(category);
     }
 
     /** Is {@code category} counted in beds rather than in blocks of its own? */
@@ -247,20 +272,20 @@ public final class BuildingSurvey {
         return out;
     }
 
-    /**
-     * Workplaces no settlement job uses (0.5.2): with these every vanilla workstation belongs to
-     * some building type. They unlock no job and no step up asks for them.
-     */
-    private static final Map<BuildingCategory, List<VillagerProfession>> WORKPLACES = Map.of(
-            BuildingCategory.LIBRARY, List.of(VillagerProfession.LIBRARIAN),
-            BuildingCategory.TEMPLE, List.of(VillagerProfession.CLERIC));
-
-    /** The blocks, any one of which lets a room qualify as {@code category}. */
+    /** The blocks, any one of which counts toward {@code category}. */
     public static Set<Block> requiredBlocks(ServerLevel level, BuildingCategory category) {
         Set<Block> out = new HashSet<>();
-        SettlementJob job = JOB_BUILDINGS.get(category);
-        List<VillagerProfession> professions = job != null ? job.eligibleProfessions()
-                : WORKPLACES.getOrDefault(category, List.of());
+        if (category == BuildingCategory.STORAGE_CENTER) {
+            // Chests and trapped chests, and other mods' wooden chests; not ender chests (they
+            // store nothing for the town) and not barrels (a fisherman's workstation).
+            for (Block b : BuiltInRegistries.BLOCK) {
+                if (b instanceof ChestBlock || b.defaultBlockState().is(Tags.Blocks.CHESTS_WOODEN)) {
+                    out.add(b);
+                }
+            }
+            return out;
+        }
+        List<VillagerProfession> professions = WORKSTATIONS.getOrDefault(category, List::of).get();
         if (!professions.isEmpty()) {
             Registry<PoiType> pois = level.registryAccess().registryOrThrow(Registries.POINT_OF_INTEREST_TYPE);
             for (VillagerProfession profession : professions) {

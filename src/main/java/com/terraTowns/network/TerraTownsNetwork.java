@@ -105,7 +105,8 @@ public final class TerraTownsNetwork {
                 data.id(), eval.to() == null ? "" : eval.to().id(), entries));
         sendJobBoard(player, level, data);
         PacketDistributor.sendToPlayer(player, new SyncSettlementMapPacket(data.id(),
-                com.terraTowns.settlement.SettlementMap.build(level, data)));
+                com.terraTowns.settlement.SettlementMap.build(level, data),
+                com.terraTowns.settlement.SettlementMap.residents(level, data)));
     }
 
     /**

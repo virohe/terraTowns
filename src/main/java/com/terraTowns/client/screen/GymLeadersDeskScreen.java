@@ -111,6 +111,18 @@ public class GymLeadersDeskScreen extends Screen {
     private static final int MAP_TOP = 38;
     private static final int LEGEND_W = 112;
     private static final int LEGEND_ROW = 11;
+    /** Villagers on the settlement's ground, sent with the map (building details, 0.5.4). */
+    private List<com.terraTowns.settlement.SettlementMap.Resident> residents = List.of();
+    /** The building clicked on the map (its box), whose details replace the legend; null for none. */
+    @Nullable
+    private net.minecraft.world.level.levelgen.structure.BoundingBox selected;
+    // Dragging the map: where the press started and whether it has moved far enough to be a pan.
+    private boolean dragging;
+    private boolean dragMoved;
+    private double dragStartX;
+    private double dragStartY;
+    // The zoom bar (inside the map frame's right edge): + box, track, - box.
+    private static final int ZOOM_TRACK = 48;
 
     // Sections state.
     private int selectedSection = -1;
@@ -144,12 +156,26 @@ public class GymLeadersDeskScreen extends Screen {
         rebuildWidgets();
     }
 
-    /** Install the settlement map picture (sent with the desk sync). */
-    public void setMap(com.terraTowns.settlement.SettlementMap.Image image) {
+    /** Install the settlement map picture and its villagers (sent with the desk sync). */
+    public void setMap(com.terraTowns.settlement.SettlementMap.Image image,
+                       List<com.terraTowns.settlement.SettlementMap.Resident> residents) {
         if (map != null) {
             map.close();
         }
         map = new SettlementMapView(image);
+        this.residents = residents;
+        this.selected = null;
+    }
+
+    /** Dev only ({@code RenderCheck}): select the first building of {@code type}, as a click would. */
+    public void selectForCheck(BuildingCategory type) {
+        for (SettlementMapView.Building b : SettlementMapView.buildings(data)) {
+            if (b.type() == type && map != null) {
+                selected = b.box();
+                map.focus(b.box());
+                return;
+            }
+        }
     }
 
     /** Install the server-evaluated job board shown in the Jobs tab. */
@@ -285,7 +311,10 @@ public class GymLeadersDeskScreen extends Screen {
             setBannerFromHand();
             return true;
         }
-        if (tab == Tab.MAP && mapMode == MapMode.BUILDINGS && legendOpen) {
+        if (tab == Tab.MAP && mapMode != MapMode.SECTIONS && map != null && mapClicked(mouseX, mouseY)) {
+            return true;
+        }
+        if (tab == Tab.MAP && mapMode == MapMode.BUILDINGS && legendOpen && selected == null) {
             List<String> entries = legendEntries();
             int lx = leftPos + WIDTH - PAD - LEGEND_W;
             int ly = topPos + MAP_TOP;
@@ -312,6 +341,120 @@ public class GymLeadersDeskScreen extends Screen {
             }
         }
         return super.mouseClicked(mouseX, mouseY, button);
+    }
+
+    // --- map input (0.5.4): zoom bar, scroll to zoom at the cursor, drag to pan, click a building
+
+    /** Where the map's frame goes: the panel's width, less the side panel when one is open. */
+    private int[] mapRect() {
+        int w = WIDTH - 2 * PAD;
+        if (sidePanelOpen()) {
+            w -= LEGEND_W + 4;
+        }
+        return new int[]{leftPos + PAD, topPos + MAP_TOP, w, HEIGHT - MAP_TOP - PAD};
+    }
+
+    private boolean sidePanelOpen() {
+        return mapMode == MapMode.BUILDINGS && (legendOpen || selected != null);
+    }
+
+    /** The zoom bar's + box (x, y); the track runs below it and the - box below that. */
+    private int[] zoomBar() {
+        int[] r = mapRect();
+        return new int[]{r[0] + r[2] - 6 - 13, r[1] + 6 + 3};
+    }
+
+    /** A press on the map: the zoom bar, the details' close box, or the start of a drag/click. */
+    private boolean mapClicked(double mx, double my) {
+        int[] z = zoomBar();
+        int trackTop = z[1] + 12;
+        if (mx >= z[0] && mx < z[0] + 10) {
+            if (my >= z[1] && my < z[1] + 10) {
+                map.setZoom(map.zoom() * 1.5F);
+                return true;
+            }
+            if (my >= trackTop + ZOOM_TRACK + 2 && my < trackTop + ZOOM_TRACK + 12) {
+                map.setZoom(map.zoom() / 1.5F);
+                return true;
+            }
+            if (my >= trackTop && my < trackTop + ZOOM_TRACK) {
+                double t = (trackTop + ZOOM_TRACK - my) / ZOOM_TRACK;
+                map.setZoom((float) Math.pow(SettlementMapView.MAX_ZOOM, t));
+                return true;
+            }
+        }
+        if (selected != null) {
+            int px = leftPos + WIDTH - PAD - LEGEND_W;
+            int py = topPos + MAP_TOP;
+            if (mx >= px + LEGEND_W - 12 && mx < px + LEGEND_W && my >= py && my < py + 12) {
+                selected = null; // the close box
+                return true;
+            }
+        }
+        if (map.overView(mx, my)) {
+            dragging = true;
+            dragMoved = false;
+            dragStartX = mx;
+            dragStartY = my;
+            return true;
+        }
+        return false;
+    }
+
+    @Override
+    public boolean mouseDragged(double mx, double my, int button, double dx, double dy) {
+        if (dragging && map != null) {
+            map.pan(dx, dy);
+            if (Math.abs(mx - dragStartX) + Math.abs(my - dragStartY) > 3) {
+                dragMoved = true;
+            }
+            return true;
+        }
+        return super.mouseDragged(mx, my, button, dx, dy);
+    }
+
+    @Override
+    public boolean mouseReleased(double mx, double my, int button) {
+        if (dragging) {
+            dragging = false;
+            if (!dragMoved && mapMode == MapMode.BUILDINGS && map != null) {
+                // A click, not a drag: select the (smallest) building under the cursor, zoom in on it.
+                SettlementMapView.Building hit = buildingAt(mx, my);
+                selected = hit == null ? null : hit.box();
+                if (hit != null) {
+                    map.focus(hit.box());
+                }
+            }
+            return true;
+        }
+        return super.mouseReleased(mx, my, button);
+    }
+
+    @Override
+    public boolean mouseScrolled(double mx, double my, double scrollX, double scrollY) {
+        if (tab == Tab.MAP && mapMode != MapMode.SECTIONS && map != null && map.overView(mx, my) && scrollY != 0) {
+            map.zoomAt(mx, my, scrollY > 0 ? 1.25F : 0.8F);
+            return true;
+        }
+        return super.mouseScrolled(mx, my, scrollX, scrollY);
+    }
+
+    /** The smallest shown building under the cursor, or null. */
+    @Nullable
+    private SettlementMapView.Building buildingAt(double mx, double my) {
+        SettlementMapView.Building best = null;
+        long bestArea = Long.MAX_VALUE;
+        for (SettlementMapView.Building b : SettlementMapView.buildings(data)) {
+            if (hiddenTypes.contains(legendKey(b.type())) || !map.over(b.box(), mx, my)) {
+                continue;
+            }
+            long area = (long) b.box().getXSpan() * b.box().getZSpan();
+            if (area < bestArea) {
+                best = b;
+                bestArea = area;
+            }
+        }
+        return best;
     }
 
     private boolean isOverBannerSlot(double mouseX, double mouseY) {
@@ -458,10 +601,14 @@ public class GymLeadersDeskScreen extends Screen {
                         Component.translatable("settlement.terra_towns.tier." + checklistTierId)),
                 x, topPos + 20, WIDTH - 2 * PAD, VanillaGui.SUBTLE) + 2;
         int colW = (WIDTH - 2 * PAD - 8) / 2;
-        int half = (checklist.size() + 1) / 2;
+        // What's still to do first, what's done at the end (user, 2026-10-16); each group keeps
+        // the server's order.
+        List<SyncPromotionChecklistPacket.Entry> ordered = new java.util.ArrayList<>(checklist);
+        ordered.sort(java.util.Comparator.comparing(SyncPromotionChecklistPacket.Entry::met));
+        int half = (ordered.size() + 1) / 2;
         int top = y;
-        for (int i = 0; i < checklist.size(); i++) {
-            SyncPromotionChecklistPacket.Entry entry = checklist.get(i);
+        for (int i = 0; i < ordered.size(); i++) {
+            SyncPromotionChecklistPacket.Entry entry = ordered.get(i);
             int colX = i < half ? x : x + colW + 8;
             if (i == half) {
                 y = top;
@@ -540,23 +687,20 @@ public class GymLeadersDeskScreen extends Screen {
     /**
      * Map tab (0.5.3): a bird's-eye view of the settlement's footprint in a vanilla map frame.
      * "No outline" is the map alone; "Buildings" outlines every registered or detected building
-     * in its type's colour (hover one for what it is; the legend switches types on and off);
-     * "Sections" is the settlement's named districts.
+     * in its type's colour (hover one for what it is, click it to zoom in and see its details;
+     * the legend switches types on and off); "Sections" is the settlement's named districts.
+     * Scroll or use the zoom bar to zoom, drag to pan (0.5.4: big towns were hard to read).
      */
     private void renderMap(GuiGraphics graphics, int mouseX, int mouseY) {
         if (mapMode == MapMode.SECTIONS) {
             renderSections(graphics);
             return;
         }
-        int x = leftPos + PAD;
-        int y = topPos + MAP_TOP;
-        int w = WIDTH - 2 * PAD;
-        int h = HEIGHT - MAP_TOP - PAD;
-        boolean legend = mapMode == MapMode.BUILDINGS && legendOpen;
-        if (legend) {
-            // Beside the map, not over it: over it, it hid the village centre (render check).
-            w -= LEGEND_W + 4;
-        }
+        int[] r = mapRect();
+        int x = r[0];
+        int y = r[1];
+        int w = r[2];
+        int h = r[3];
         if (map == null) {
             drawWrapped(graphics, Component.translatable("screen.terra_towns.desk.map.loading"),
                     x, y + 4, w, VanillaGui.SUBTLE);
@@ -564,20 +708,19 @@ public class GymLeadersDeskScreen extends Screen {
         }
         map.draw(graphics, x, y, w, h);
         List<Component> tooltip = null;
+        SettlementMapView.Building selectedBuilding = null;
         if (mapMode == MapMode.BUILDINGS) {
-            SettlementMapView.Building hovered = null;
-            long hoveredArea = Long.MAX_VALUE;
             for (SettlementMapView.Building b : SettlementMapView.buildings(data)) {
                 if (hiddenTypes.contains(legendKey(b.type()))) {
                     continue;
                 }
-                map.outline(graphics, b.box(), b.color());
-                long area = (long) b.box().getXSpan() * b.box().getZSpan();
-                if (mouseX < x + w && map.over(b.box(), mouseX, mouseY) && area < hoveredArea) {
-                    hovered = b;
-                    hoveredArea = area;
+                boolean isSelected = b.box().equals(selected);
+                if (isSelected) {
+                    selectedBuilding = b;
                 }
+                map.outline(graphics, b.box(), b.color(), isSelected);
             }
+            SettlementMapView.Building hovered = dragging ? null : buildingAt(mouseX, mouseY);
             if (hovered != null) {
                 tooltip = hovered.tooltip();
             }
@@ -588,12 +731,86 @@ public class GymLeadersDeskScreen extends Screen {
         if (minecraft != null && minecraft.player != null) {
             map.marker(graphics, minecraft.player.getX(), minecraft.player.getZ(), 0xFFFFFFFF);
         }
-        if (legend) {
-            renderLegend(graphics, leftPos + WIDTH - PAD - LEGEND_W, y);
+        map.endClip(graphics);
+        renderZoomBar(graphics);
+        int panelX = leftPos + WIDTH - PAD - LEGEND_W;
+        if (selectedBuilding != null) {
+            renderDetails(graphics, selectedBuilding, panelX, y, h);
+        } else if (mapMode == MapMode.BUILDINGS && legendOpen) {
+            selected = null; // hidden by the legend, or gone since
+            renderLegend(graphics, panelX, y);
+        } else {
+            selected = null;
         }
         if (tooltip != null) {
             graphics.renderComponentTooltip(font, tooltip, mouseX, mouseY);
         }
+    }
+
+    /** + / track with a knob / -, inside the map frame's right edge. */
+    private void renderZoomBar(GuiGraphics graphics) {
+        int[] z = zoomBar();
+        int bx = z[0];
+        int by = z[1];
+        int trackTop = by + 12;
+        zoomButton(graphics, bx, by, "+");
+        graphics.fill(bx + 3, trackTop, bx + 7, trackTop + ZOOM_TRACK, 0xFF000000);
+        graphics.fill(bx + 4, trackTop + 1, bx + 6, trackTop + ZOOM_TRACK - 1, 0xFF8B8B8B);
+        double t = Math.log(map.zoom()) / Math.log(SettlementMapView.MAX_ZOOM);
+        int knob = trackTop + ZOOM_TRACK - 3 - (int) Math.round(t * (ZOOM_TRACK - 6));
+        graphics.fill(bx, knob, bx + 10, knob + 6, 0xFF000000);
+        graphics.fill(bx + 1, knob + 1, bx + 9, knob + 5, 0xFFE0E0E0);
+        zoomButton(graphics, bx, trackTop + ZOOM_TRACK + 2, "-");
+    }
+
+    private void zoomButton(GuiGraphics graphics, int x, int y, String label) {
+        graphics.fill(x, y, x + 10, y + 10, 0xFF000000);
+        graphics.fill(x + 1, y + 1, x + 9, y + 9, 0xFFC6C6C6);
+        graphics.drawString(font, label, x + 5 - font.width(label) / 2, y + 1, VanillaGui.LABEL, false);
+    }
+
+    /**
+     * The clicked building's details (0.5.4), where the legend goes: what it is, its beds and
+     * workstations, and which villagers work or sleep in it.
+     */
+    private void renderDetails(GuiGraphics graphics, SettlementMapView.Building b, int px, int py, int ph) {
+        graphics.fill(px - 1, py - 1, px + LEGEND_W + 1, py + ph + 1, 0xFF000000);
+        graphics.fill(px, py, px + LEGEND_W, py + ph, 0xF0C6C6C6);
+        graphics.drawString(font, "×", px + LEGEND_W - 9, py + 2, VanillaGui.LABEL, false);
+        int y = py + 3;
+        int w = LEGEND_W - 14;
+        for (int i = 0; i < b.tooltip().size(); i++) {
+            y = drawWrapped(graphics, b.tooltip().get(i).copy().withStyle(style -> style.withColor(
+                    VanillaGui.LABEL)), px + 4, y, i == 0 ? w : LEGEND_W - 8, i == 0 ? VanillaGui.LABEL : VanillaGui.SUBTLE);
+        }
+        List<String> workers = new java.util.ArrayList<>();
+        List<String> sleepers = new java.util.ArrayList<>();
+        for (com.terraTowns.settlement.SettlementMap.Resident r : residents) {
+            if (r.jobSite() != Long.MIN_VALUE && b.box().isInside(net.minecraft.core.BlockPos.of(r.jobSite()))) {
+                workers.add(residentName(r));
+            }
+            if (r.home() != Long.MIN_VALUE && b.box().isInside(net.minecraft.core.BlockPos.of(r.home()))) {
+                sleepers.add(residentName(r));
+            }
+        }
+        y += 3;
+        y = drawWrapped(graphics, Component.translatable("screen.terra_towns.desk.map.works_here",
+                workers.isEmpty() ? "-" : String.join(", ", workers)), px + 4, y, LEGEND_W - 8, VanillaGui.LABEL);
+        drawWrapped(graphics, Component.translatable("screen.terra_towns.desk.map.sleeps_here",
+                sleepers.isEmpty() ? "-" : String.join(", ", sleepers)), px + 4, y + 2, LEGEND_W - 8, VanillaGui.LABEL);
+    }
+
+    /** A villager as the details list it: its name if it has one, else its trade ("Farmer"). */
+    private static String residentName(com.terraTowns.settlement.SettlementMap.Resident r) {
+        if (!r.name().isEmpty()) {
+            return r.name();
+        }
+        String p = r.profession().contains(":") ? r.profession().substring(r.profession().indexOf(':') + 1) : r.profession();
+        if (p.equals("none") || p.isEmpty()) {
+            return Component.translatable("screen.terra_towns.desk.map.unemployed").getString();
+        }
+        String words = p.replace('_', ' ');
+        return Character.toUpperCase(words.charAt(0)) + words.substring(1);
     }
 
     /** One row per building type on the map (and "unrecognised"): swatch, name, count; click to hide. */

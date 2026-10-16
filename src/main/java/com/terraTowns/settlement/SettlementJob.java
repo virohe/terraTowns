@@ -52,7 +52,7 @@ public enum SettlementJob {
                     VillagerProfession.CARTOGRAPHER)),
 
     /** Raises the next building. Unlocked by the warehouse that stores its materials. */
-    BUILDER("builder", BuildingCategory.WAREHOUSE,
+    BUILDER("builder", BuildingCategory.STORAGE_CENTER,
             () -> List.of(VillagerProfession.MASON, VillagerProfession.FLETCHER));
 
     private final String id;

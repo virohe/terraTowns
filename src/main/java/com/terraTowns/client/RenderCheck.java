@@ -97,7 +97,16 @@ public final class RenderCheck {
             Screenshot.grab(mc.gameDirectory, "rendercheck-map-plain.png",
                     mc.getMainRenderTarget(), msg -> TerraTowns.LOGGER.info("[render-check] {}", msg.getString()));
         }
-        if (ticks == desk + 110) {
+        // 0.5.4: a building clicked on the map: zoomed in on, with its details beside the map.
+        if (ticks == desk + 100 && mc.screen instanceof com.terraTowns.client.screen.GymLeadersDeskScreen screen) {
+            screen.showMapForCheck(true);
+            screen.selectForCheck(com.terraTowns.structure.BuildingCategory.HOUSING);
+        }
+        if (ticks == desk + 120) {
+            Screenshot.grab(mc.gameDirectory, "rendercheck-map-detail.png",
+                    mc.getMainRenderTarget(), msg -> TerraTowns.LOGGER.info("[render-check] {}", msg.getString()));
+        }
+        if (ticks == desk + 140) {
             TerraTowns.LOGGER.info("[render-check] done");
             mc.stop();
         }
@@ -206,6 +215,13 @@ public final class RenderCheck {
         v.setVillagerData(v.getVillagerData().setProfession(TerraTownsRegistries.GUARD_PROFESSION.get()));
         level.addFreshEntity(v);
         guard = v;
+        // 0.5.4: a Market Counter beside the Guard, its low step toward the camera, to see its
+        // placeholder stair model the right way round.
+        BlockPos counter = BlockPos.containing(at.x, y, at.z)
+                .relative(net.minecraft.core.Direction.fromYRot(player.getYRot()).getClockWise(), 2);
+        level.setBlock(counter, TerraTownsRegistries.MARKET_COUNTER.get().defaultBlockState()
+                .setValue(com.terraTowns.block.MarketCounterBlock.FACING,
+                        net.minecraft.core.Direction.fromYRot(player.getYRot()).getOpposite()), 3);
         player.teleportTo(level, player.getX(), y + 0.0, player.getZ(), player.getYRot(), 12.0F);
         TerraTowns.LOGGER.info("[render-check] staged guard at {}", v.blockPosition());
     }

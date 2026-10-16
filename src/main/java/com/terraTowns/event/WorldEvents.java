@@ -117,6 +117,7 @@ public final class WorldEvents {
         com.terraTowns.settlement.SettlementData hamlet = manager.addSpawnHamlet(site, null, spawn, "Hamlet " + number);
         hamlet.setFootprint(built.bounds());
         hamlet.addHouses(built.houses());
+        hamlet.addFarms(built.farms());
         com.terraTowns.structure.BuildingDetection.refreshAll(level, hamlet);
         if (number == 1) {
             level.setDefaultSpawnPos(spawn, 0.0f);

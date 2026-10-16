@@ -158,7 +158,7 @@ public final class JobAudit {
 
     /**
      * The plaque rules, end to end, on real blocks in the sky over the first hamlet: a sealed
-     * room with a loom and a smithing table offers exactly Farm Plots and Smithy; the sign names
+     * room with a composter and a smithing table offers exactly Farms and Smithy; the sign names
      * the type; only that type's job is open; a building takes ONE plaque (the first keeps it);
      * a plaque on the outside wall surveys the room behind; a workstation set into a shared wall
      * belongs to one building; outdoor plaques can't see through walls and can't crowd one spot;
@@ -168,13 +168,17 @@ public final class JobAudit {
         Map<String, Object> out = new LinkedHashMap<>();
         SettlementData s = manager.all().iterator().next();
         s.setGymCleared(true);
+        // Only the plaques under test may register anything: set aside the hamlet's own detected
+        // houses and farms (0.5.2+), which would open the Farmer job whatever a plaque says.
+        List<SettlementData.Structure> setAside = new ArrayList<>(s.structures());
+        s.structures().clear();
         BlockPos o = s.center().above(40);
         BlockState plaqueState = TerraTownsRegistries.BUILDING_PLAQUE.get().defaultBlockState();
 
         shell(level, o, o.offset(6, 4, 6));
-        BlockPos loom = o.offset(4, 1, 1);
+        BlockPos composter = o.offset(4, 1, 1);
         BlockPos table = o.offset(4, 1, 2);
-        level.setBlock(loom, Blocks.LOOM.defaultBlockState(), 3);
+        level.setBlock(composter, Blocks.COMPOSTER.defaultBlockState(), 3);
         level.setBlock(table, Blocks.SMITHING_TABLE.defaultBlockState(), 3);
 
         // 1. Cycling offers exactly what the workstations allow; the sign and the job board agree.
@@ -225,7 +229,7 @@ public final class JobAudit {
         level.setBlock(roomB, Blocks.AIR.defaultBlockState(), 3);
         level.setBlock(wallStation, Blocks.COBBLESTONE.defaultBlockState(), 3);
 
-        // 5. Outdoors: a plaque on a post against the room's wall, five blocks from the loom, can't
+        // 5. Outdoors: a plaque on a post against the room's wall, five blocks from the composter, can't
         // see through the wall — and can once there's a hole in it (control).
         s.removePlaque(outside); // free the room's workstations, so only the wall stands in the way
         BlockPos post = o.offset(-2, 2, 1);
@@ -276,10 +280,10 @@ public final class JobAudit {
 
         // 8. Everything carried off: the periodic re-check un-registers; a workstation brought
         // back re-registers; and breaking the plaque clears it.
-        level.setBlock(loom, Blocks.AIR.defaultBlockState(), 3);
+        level.setBlock(composter, Blocks.AIR.defaultBlockState(), 3);
         BuildingRegistry.revalidate(level, s);
         boolean unregistered = s.plaqueAt(outside) == null;
-        level.setBlock(loom, Blocks.LOOM.defaultBlockState(), 3);
+        level.setBlock(composter, Blocks.COMPOSTER.defaultBlockState(), 3);
         BuildingRegistry.refreshPlaque(level, outside, null, false);
         boolean reRegistered = s.plaqueAt(outside) == BuildingCategory.FARM_PLOTS;
         level.setBlock(outside, Blocks.AIR.defaultBlockState(), 3);
@@ -318,6 +322,7 @@ public final class JobAudit {
         verdict.put("reRegistersWhenWorkstationReturns", reRegistered);
         verdict.put("removingPlaqueUnregisters", clearedOnRemove);
         verdict.put("hamletPromotionNeedsGym", hamletNeedsGym);
+        s.structures().addAll(setAside);
         out.put("verdict", verdict);
         return out;
     }
@@ -487,7 +492,7 @@ public final class JobAudit {
         int houses = 0;
         int housing = 0;
         for (SettlementData h : hamlets) {
-            houses += h.structures().size();
+            houses += (int) h.structures().stream().filter(x -> x.onlyAs() == BuildingCategory.HOUSING).count();
             housing += h.buildingCount(BuildingCategory.HOUSING);
         }
         verdict.put("hamletHousesAreHousing", housing + " / " + houses);
@@ -514,7 +519,7 @@ public final class JobAudit {
         net.minecraft.world.level.levelgen.structure.BoundingBox box =
                 new net.minecraft.world.level.levelgen.structure.BoundingBox(o.getX(), o.getY(), o.getZ(),
                         o.getX() + 6, o.getY() + 4, o.getZ() + 6);
-        SettlementData.Structure st = new SettlementData.Structure(box, "terra_towns:audit/test", false);
+        SettlementData.Structure st = new SettlementData.Structure(box, "terra_towns:audit/test", null);
         h.structures().add(st);
         int smithiesBefore = h.buildingCount(BuildingCategory.SMITHY);
         BuildingDetection.classify(level, h, st);
@@ -560,20 +565,71 @@ public final class JobAudit {
         verdict.put("countsAgainWithoutPlaque", countsAgain);
         verdict.put("emptiedIsNothing", emptiedIsNothing);
 
+        // 0.5.4: hamlet farms registered as Farms; a block change marks a structure dirty; a
+        // barrel makes a Fishery, not Farms; a Storage Center needs 20 chests; a generated
+        // animal pen (no workstation) is Farms by its fences.
+        int hamletFarms = 0;
+        for (SettlementData hm : hamlets) {
+            hamletFarms += (int) hm.structures().stream()
+                    .filter(x -> x.onlyAs() == BuildingCategory.FARM_PLOTS && x.type() == BuildingCategory.FARM_PLOTS).count();
+        }
+        verdict.put("hamletFarmsAreFarms", hamletFarms >= 2 * hamlets.size());
+        out.put("hamletFarms", hamletFarms);
+
+        shell(level, o, o.offset(6, 4, 6));
+        SettlementData.Structure probe = new SettlementData.Structure(box, "minecraft:village/plains/houses/test", null);
+        h.structures().add(probe);
+        BuildingDetection.classify(level, h, probe);
+        boolean cleanAfterClassify = !probe.dirty();
+        level.setBlock(o.offset(3, 1, 3), Blocks.BARREL.defaultBlockState(), 3);
+        boolean blockChangeMarksDirty = cleanAfterClassify && probe.dirty();
+        BuildingDetection.tick(level, h);
+        boolean barrelIsFishery = probe.type() == BuildingCategory.FISHERY && !probe.dirty();
+        level.setBlock(o.offset(3, 1, 3), Blocks.AIR.defaultBlockState(), 3);
+        int placed = 0;
+        for (BlockPos p : BlockPos.betweenClosed(o.offset(1, 1, 1), o.offset(5, 1, 5))) {
+            if (placed < 19) {
+                level.setBlock(p, Blocks.CHEST.defaultBlockState(), 2);
+                placed++;
+            }
+        }
+        BuildingDetection.classify(level, h, probe);
+        boolean nineteenIsNot = probe.type() != BuildingCategory.STORAGE_CENTER;
+        level.setBlock(o.offset(1, 2, 1), Blocks.CHEST.defaultBlockState(), 2);
+        BuildingDetection.classify(level, h, probe);
+        boolean twentyIsStorage = probe.type() == BuildingCategory.STORAGE_CENTER;
+        for (BlockPos p : BlockPos.betweenClosed(o.offset(1, 1, 1), o.offset(5, 2, 5))) {
+            level.setBlock(p, Blocks.AIR.defaultBlockState(), 2);
+        }
+        h.structures().remove(probe);
+        SettlementData.Structure pen = new SettlementData.Structure(box, "minecraft:village/plains/houses/plains_animal_pen_2", null);
+        h.structures().add(pen);
+        level.setBlock(o.offset(2, 1, 2), Blocks.OAK_FENCE.defaultBlockState(), 2);
+        BuildingDetection.classify(level, h, pen);
+        boolean penIsFarm = pen.type() == BuildingCategory.FARM_PLOTS;
+        h.structures().remove(pen);
+        for (BlockPos p : BlockPos.betweenClosed(o, o.offset(6, 4, 6))) {
+            level.setBlock(p, Blocks.AIR.defaultBlockState(), 3);
+        }
+        verdict.put("blockChangeMarksDirty", blockChangeMarksDirty);
+        verdict.put("barrelIsFishery", barrelIsFishery);
+        verdict.put("storageCenterNeeds20Chests", nineteenIsNot && twentyIsStorage);
+        verdict.put("generatedPenIsFarms", penIsFarm);
+
         // "New buildings": plaques registered at village tier or above.
         com.terraTowns.settlement.SettlementTier tierBefore = h.tier();
         BlockPos oldPlaque = o.offset(0, -1, 0);
         h.setPlaque(oldPlaque, BuildingCategory.FARM_PLOTS, java.util.Set.of(), oldPlaque, null);
         h.setTier(com.terraTowns.settlement.SettlementTier.VILLAGE);
         BlockPos newPlaque = o.offset(0, -2, 0);
-        h.setPlaque(newPlaque, BuildingCategory.WAREHOUSE, java.util.Set.of(), newPlaque, null);
+        h.setPlaque(newPlaque, BuildingCategory.STORAGE_CENTER, java.util.Set.of(), newPlaque, null);
         boolean newCounted = h.buildingsRegisteredSince(com.terraTowns.settlement.SettlementTier.VILLAGE) == 1;
 
         // The town checklist: staffed workers, trades, new buildings, the Pokecentre.
         List<SettlementPromotion.Requirement> town = SettlementPromotion.evaluate(level, h).requirements();
         boolean townAsks = countKey(town, "promo.terra_towns.req.workers") == 4
                 && countKey(town, "promo.terra_towns.req.trades") == 1
-                && countKey(town, "promo.terra_towns.req.new_buildings") == 1
+                && countKey(town, "promo.terra_towns.req.new_structures") == 1
                 && namesBuilding(town, "promo.terra_towns.req.building", "pokecenter")
                 && namesBuilding(town, "promo.terra_towns.req.building_count", "housing")
                 && !namesBuilding(town, "promo.terra_towns.req.building", "battle_facility");
@@ -609,9 +665,10 @@ public final class JobAudit {
         return null;
     }
 
+    /** Requirements labelled {@code key}, or a key under it ("...workers" counts "...workers.farmer"). */
     private static long countKey(List<SettlementPromotion.Requirement> reqs, String key) {
         return reqs.stream().filter(r -> r.label().getContents() instanceof TranslatableContents t
-                && t.getKey().equals(key)).count();
+                && (t.getKey().equals(key) || t.getKey().startsWith(key + "."))).count();
     }
 
     /** Does a requirement of {@code key} name the building {@code id} (its first argument)? */
