@@ -8,8 +8,6 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.npc.Villager;
-import net.minecraft.world.phys.AABB;
-import net.minecraft.world.phys.Vec3;
 
 import javax.annotation.Nullable;
 import java.util.ArrayList;
@@ -25,7 +23,7 @@ import java.util.UUID;
  * <p>Two conditions unlock a job, both of which the player has to actually do:</p>
  * <ol>
  *   <li>the settlement's gym has been cleared ({@link SettlementData#isGymCleared()}), and</li>
- *   <li>the job's enabling building is registered ({@link SettlementJob#unlockedBy()}).</li>
+ *   <li>one of the job's buildings is registered ({@link SettlementJob#buildings()}).</li>
  * </ol>
  *
  * <p>A job is <b>open</b> while it has been earned AND its building is registered right now.
@@ -80,7 +78,7 @@ public final class JobBoard {
 
     /** @return true if {@code settlement} currently meets both unlock conditions for {@code job}. */
     public static boolean canUnlock(SettlementData settlement, SettlementJob job) {
-        return settlement.isGymCleared() && job.tierAllows(settlement) && settlement.hasBuilding(job.unlockedBy());
+        return settlement.isGymCleared() && job.tierAllows(settlement) && job.hasBuilding(settlement);
     }
 
     /**
@@ -112,7 +110,7 @@ public final class JobBoard {
             }
             Villager holder = find(nearby, holderId);
             boolean stillValid = holder != null
-                    && settlement.hasBuilding(job.unlockedBy())
+                    && job.hasBuilding(settlement)
                     && job.accepts(holder.getVillagerData().getProfession());
             if (!stillValid) {
                 settlement.setJobHolder(job, null);
@@ -123,7 +121,7 @@ public final class JobBoard {
         for (SettlementJob job : SettlementJob.values()) {
             if (!settlement.hasJobUnlocked(job)
                     || settlement.jobHolder(job) != null
-                    || !settlement.hasBuilding(job.unlockedBy())) {
+                    || !job.hasBuilding(settlement)) {
                 continue;
             }
             for (Villager candidate : nearby) {
@@ -182,7 +180,7 @@ public final class JobBoard {
             // so it is named first when both are outstanding.
             return settlement.isGymCleared() ? Status.LOCKED_BUILDING : Status.LOCKED_GYM;
         }
-        if (!settlement.hasBuilding(job.unlockedBy())) {
+        if (!job.hasBuilding(settlement)) {
             // Earned once, but its building isn't registered now. Before 0.4.6 an unlock was
             // permanent, so cycling one plaque through every type (each one registered for a
             // moment) left every job open for good.
@@ -195,9 +193,26 @@ public final class JobBoard {
     }
 
     private static List<Villager> villagersIn(ServerLevel level, SettlementData settlement) {
-        double r = settlement.registrationRadius();
-        AABB box = AABB.ofSize(Vec3.atCenterOf(settlement.center()), 2.0 * r, 2.0 * r, 2.0 * r);
-        return level.getEntitiesOfClass(Villager.class, box);
+        return level.getEntitiesOfClass(Villager.class, settlement.area(), v -> settlement.covers(v.blockPosition()));
+    }
+
+    /**
+     * The adult residents working each job, by profession (0.5.5, the Jobs tab's counts and
+     * breakdown): job -> profession -> how many.
+     */
+    public static Map<SettlementJob, Map<VillagerProfession, Integer>> workforce(ServerLevel level, SettlementData settlement) {
+        Map<SettlementJob, Map<VillagerProfession, Integer>> out = new EnumMap<>(SettlementJob.class);
+        for (Villager v : villagersIn(level, settlement)) {
+            if (v.isBaby() || !SettlementPromotion.isResident(v)) {
+                continue;
+            }
+            VillagerProfession p = v.getVillagerData().getProfession();
+            SettlementJob job = ProfessionJobs.jobOf(p);
+            if (job != null) {
+                out.computeIfAbsent(job, k -> new java.util.LinkedHashMap<>()).merge(p, 1, Integer::sum);
+            }
+        }
+        return out;
     }
 
     @Nullable

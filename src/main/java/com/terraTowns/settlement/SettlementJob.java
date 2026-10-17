@@ -1,6 +1,5 @@
 package com.terraTowns.settlement;
 
-import com.terraTowns.registry.TerraTownsRegistries;
 import com.terraTowns.structure.BuildingCategory;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.npc.VillagerProfession;
@@ -8,15 +7,21 @@ import net.minecraft.world.entity.npc.VillagerProfession;
 import javax.annotation.Nullable;
 import java.util.List;
 import java.util.Set;
-import java.util.function.Supplier;
 
 /**
- * The staffed roles a settlement can fill: the five jobs on the 0.4 roadmap.
+ * The jobs a settlement's villagers can hold, each a group of trades (0.5.5, user's grouping
+ * 2026-10-16). Which profession is in which job is decided by {@link ProfessionJobs} (tags, then
+ * a guess for other mods' professions); which buildings open a job lives here.
  *
- * <p><b>This enum is the single place every job policy decision lives.</b> Which building
- * unlocks a job, and which villagers are eligible to hold it, are both open design questions
- * (see {@code DESIGN.md} §4) — isolating them here means changing the answer is a one-file
- * edit, the same way {@code GymLeaderEntity.lockStrength} isolates gym scaling.</p>
+ * <ul>
+ *   <li><b>Farmer</b> — farmer, beekeeper, rancher (0.5.6): Farms.</li>
+ *   <li><b>Smith</b> — armorer, fletcher, leatherworker, toolsmith, weaponsmith: Smithy.</li>
+ *   <li><b>Artisan</b> — butcher, cartographer, cleric, fisherman, librarian, shepherd: any of
+ *       their buildings (Library, Temple, Fishery, Butcher's Shop, Loom Shed).</li>
+ *   <li><b>Builder</b> — mason: Workshop.</li>
+ *   <li><b>Guard</b> — Terra Towns' guard: Guard Post.</li>
+ *   <li><b>Merchant</b> — the Merchant (0.6): Market Stall. No profession yet.</li>
+ * </ul>
  *
  * <p><b>Why appointment rather than gating.</b> The obvious reading of "job unlocks after gym
  * clear" is to stop villagers taking jobs until then. That was tried and rejected: vanilla
@@ -29,77 +34,88 @@ import java.util.function.Supplier;
  */
 public enum SettlementJob {
 
-    /** Works the fields. Unlocked by the farm plots every hamlet already ships with. */
-    FARMER("farmer", BuildingCategory.FARM_PLOTS,
-            () -> List.of(VillagerProfession.FARMER, VillagerProfession.FISHERMAN,
-                    VillagerProfession.SHEPHERD)),
-
-    /** Keeps the town in tools and armour. */
-    SMITH("smith", BuildingCategory.SMITHY,
-            () -> List.of(VillagerProfession.TOOLSMITH, VillagerProfession.WEAPONSMITH,
-                    VillagerProfession.ARMORER)),
-
+    FARMER("farmer", Set.of(BuildingCategory.FARM_PLOTS)),
+    SMITH("smith", Set.of(BuildingCategory.SMITHY)),
+    /** The trades that make goods but aren't farming or smithing (0.5.5). */
+    ARTISAN("artisan", Set.of(BuildingCategory.LIBRARY, BuildingCategory.TEMPLE, BuildingCategory.FISHERY,
+            BuildingCategory.BUTCHERS_SHOP, BuildingCategory.LOOM_SHED)),
+    /** Raises the next building. A mason's Workshop since 0.5.5 (a Warehouse before). */
+    BUILDER("builder", Set.of(BuildingCategory.WORKSHOP)),
     /**
      * Watches the walls. Vanilla has no guard, so Terra Towns adds the profession, worked at
-     * the vanilla target block (TT-201). Until 0.4.12 this job could unlock but never be staffed.
+     * the vanilla target block (TT-201).
      */
-    GUARD("guard", BuildingCategory.BARRACKS_GUARD_POST,
-            () -> List.of(TerraTownsRegistries.GUARD_PROFESSION.get())),
-
-    /** Runs the market stalls. */
-    MERCHANT("merchant", BuildingCategory.MARKET_STALL,
-            () -> List.of(VillagerProfession.BUTCHER, VillagerProfession.LEATHERWORKER,
-                    VillagerProfession.CARTOGRAPHER)),
-
-    /** Raises the next building. Unlocked by the warehouse that stores its materials. */
-    BUILDER("builder", BuildingCategory.STORAGE_CENTER,
-            () -> List.of(VillagerProfession.MASON, VillagerProfession.FLETCHER));
+    GUARD("guard", Set.of(BuildingCategory.BARRACKS_GUARD_POST)),
+    /**
+     * Runs a Market Stall. Its villager, the Merchant, arrives in 0.6 (DESIGN.md §2.8); until
+     * then the job opens with the stall but nobody can hold it. Butchers, leatherworkers and
+     * cartographers held it until 0.5.5.
+     */
+    MERCHANT("merchant", Set.of(BuildingCategory.MARKET_STALL));
 
     private final String id;
-    private final BuildingCategory unlockedBy;
-    /** Supplied, not stored: a mod's own professions (Guard) don't exist yet when enums load. */
-    private final Supplier<List<VillagerProfession>> eligible;
+    private final Set<BuildingCategory> buildings;
 
-    SettlementJob(String id, BuildingCategory unlockedBy, Supplier<List<VillagerProfession>> eligible) {
+    SettlementJob(String id, Set<BuildingCategory> buildings) {
         this.id = id;
-        this.unlockedBy = unlockedBy;
-        this.eligible = eligible;
+        this.buildings = buildings;
     }
 
     public String id() {
         return id;
     }
 
-    /** The building whose registration unlocks this job. */
+    /** The buildings, any one of which opens this job. */
+    public Set<BuildingCategory> buildings() {
+        return buildings;
+    }
+
+    /** The building named when the job is locked for want of one (the first, in type order). */
     public BuildingCategory unlockedBy() {
-        return unlockedBy;
+        for (BuildingCategory c : BuildingCategory.values()) {
+            if (buildings.contains(c)) {
+                return c;
+            }
+        }
+        throw new IllegalStateException(id);
     }
 
-    /** Vanilla professions whose holders may be appointed to this job. */
+    /** Does {@code settlement} have any building that opens this job? */
+    public boolean hasBuilding(SettlementData settlement) {
+        for (BuildingCategory c : buildings) {
+            if (settlement.hasBuilding(c)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** Professions whose holders belong to this job ({@link ProfessionJobs}). */
     public List<VillagerProfession> eligibleProfessions() {
-        return eligible.get();
+        return ProfessionJobs.professionsOf(this);
     }
 
-    /** @return true if a villager of {@code profession} could hold this job. */
+    /** @return true if a villager of {@code profession} belongs to this job. */
     public boolean accepts(VillagerProfession profession) {
-        return eligible.get().contains(profession);
+        return ProfessionJobs.jobOf(profession) == this;
     }
 
     /**
-     * The settlement tier this job opens at: its building's tier (see
+     * The settlement tier this job opens at: its buildings' tier (see
      * {@code BuildingRegistry.tierAllows}). Merchants and guards wait for the village.
      */
     public boolean tierAllows(SettlementData settlement) {
-        return com.terraTowns.structure.BuildingRegistry.tierAllows(settlement, unlockedBy);
+        for (BuildingCategory c : buildings) {
+            if (com.terraTowns.structure.BuildingRegistry.tierAllows(settlement, c)) {
+                return true;
+            }
+        }
+        return false;
     }
 
-    /**
-     * @return true if this job can ever be filled by a villager. Every job can since 0.4.12; a
-     *         future job without professions should surface as "unlocked, awaiting NPCs" rather
-     *         than as a job the player has failed to staff.
-     */
+    /** @return true if some profession can hold this job (the Merchant can't until 0.6). */
     public boolean isStaffable() {
-        return !eligible.get().isEmpty();
+        return !eligibleProfessions().isEmpty();
     }
 
     public Component displayName() {
@@ -117,19 +133,9 @@ public enum SettlementJob {
         return null;
     }
 
-    /** @return the job a villager of {@code profession} could be appointed to, or null. */
+    /** @return the job a villager of {@code profession} belongs to, or null. */
     @Nullable
     public static SettlementJob forProfession(VillagerProfession profession) {
-        for (SettlementJob j : values()) {
-            if (j.accepts(profession)) {
-                return j;
-            }
-        }
-        return null;
-    }
-
-    /** Every job, as an immutable set — convenience for callers building EnumSets. */
-    public static Set<SettlementJob> all() {
-        return Set.of(values());
+        return ProfessionJobs.jobOf(profession);
     }
 }

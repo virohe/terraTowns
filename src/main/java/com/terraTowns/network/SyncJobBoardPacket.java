@@ -33,9 +33,11 @@ public record SyncJobBoardPacket(UUID settlementId, List<Entry> entries) impleme
      * @param unlocked  the settlement has earned this job
      * @param staffed   a villager currently holds it
      * @param workstations the blocks a villager can work at to fill this job
+     * @param workers   residents working this job (0.5.5)
+     * @param breakdown one line per trade: "Farmer ×3", "Beekeeper ×1 (guessed)"
      */
     public record Entry(Component name, Component detail, boolean unlocked, boolean staffed,
-                        List<ItemStack> workstations) {
+                        List<ItemStack> workstations, int workers, List<Component> breakdown) {
     }
 
     public static final Type<SyncJobBoardPacket> TYPE =
@@ -52,6 +54,11 @@ public record SyncJobBoardPacket(UUID settlementId, List<Entry> entries) impleme
                             buf.writeBoolean(entry.unlocked());
                             buf.writeBoolean(entry.staffed());
                             ItemStack.LIST_STREAM_CODEC.encode(buf, entry.workstations());
+                            buf.writeVarInt(entry.workers());
+                            buf.writeVarInt(entry.breakdown().size());
+                            for (Component line : entry.breakdown()) {
+                                ComponentSerialization.STREAM_CODEC.encode(buf, line);
+                            }
                         }
                     },
                     buf -> {
@@ -64,7 +71,13 @@ public record SyncJobBoardPacket(UUID settlementId, List<Entry> entries) impleme
                             boolean unlocked = buf.readBoolean();
                             boolean staffed = buf.readBoolean();
                             List<ItemStack> stations = ItemStack.LIST_STREAM_CODEC.decode(buf);
-                            entries.add(new Entry(name, detail, unlocked, staffed, stations));
+                            int workers = buf.readVarInt();
+                            int lines = buf.readVarInt();
+                            List<Component> breakdown = new ArrayList<>(lines);
+                            for (int k = 0; k < lines; k++) {
+                                breakdown.add(ComponentSerialization.STREAM_CODEC.decode(buf));
+                            }
+                            entries.add(new Entry(name, detail, unlocked, staffed, stations, workers, breakdown));
                         }
                         return new SyncJobBoardPacket(id, entries);
                     });

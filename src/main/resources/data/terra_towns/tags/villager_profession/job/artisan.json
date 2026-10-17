@@ -1,0 +1,11 @@
+{
+  "replace": false,
+  "values": [
+    "minecraft:butcher",
+    "minecraft:cartographer",
+    "minecraft:cleric",
+    "minecraft:fisherman",
+    "minecraft:librarian",
+    "minecraft:shepherd"
+  ]
+}

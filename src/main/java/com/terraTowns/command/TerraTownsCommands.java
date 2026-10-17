@@ -120,7 +120,7 @@ public final class TerraTownsCommands {
                     case UNSTAFFED -> "unlocked, no eligible villager";
                     case AWAITING_NPC -> "unlocked, awaiting trainer NPCs";
                     case LOCKED_GYM -> "locked: gym not cleared";
-                    case LOCKED_BUILDING -> "locked: needs " + st.job().unlockedBy().id();
+                    case LOCKED_BUILDING -> "locked: needs " + st.job().buildings().stream().map(c -> c.id()).sorted().toList();
                     case LOCKED_TIER -> "locked: opens at village tier";
                 };
                 String line = String.format("  %-9s %s", st.job().id(), detail);

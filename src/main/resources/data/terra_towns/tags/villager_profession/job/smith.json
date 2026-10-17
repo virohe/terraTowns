@@ -1,0 +1,10 @@
+{
+  "replace": false,
+  "values": [
+    "minecraft:armorer",
+    "minecraft:fletcher",
+    "minecraft:leatherworker",
+    "minecraft:toolsmith",
+    "minecraft:weaponsmith"
+  ]
+}

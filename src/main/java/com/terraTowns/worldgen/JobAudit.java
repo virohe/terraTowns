@@ -84,6 +84,7 @@ public final class JobAudit {
         report.put("plaques", plaques(level, manager));
         report.put("gymDesk", gymDesk(level, manager));
         report.put("buildings", buildings(level, manager));
+        report.put("professions", professions());
         report.put("hamletAssign", hamletAssign(manager));
         report.put("treeFelling", treeFelling(level, manager));
         report.put("stonePath", stonePath(level, manager));
@@ -193,7 +194,7 @@ public final class JobAudit {
             for (JobBoard.JobStatus st : JobBoard.board(s).values()) {
                 boolean open = st.status() == JobBoard.Status.STAFFED || st.status() == JobBoard.Status.UNSTAFFED
                         || st.status() == JobBoard.Status.AWAITING_NPC;
-                if (open != (st.job().unlockedBy() == current)) {
+                if (open != st.job().buildings().contains(current)) {
                     onlyCurrentJobOpen = false;
                 }
             }
@@ -627,7 +628,7 @@ public final class JobAudit {
 
         // The town checklist: staffed workers, trades, new buildings, the Pokecentre.
         List<SettlementPromotion.Requirement> town = SettlementPromotion.evaluate(level, h).requirements();
-        boolean townAsks = countKey(town, "promo.terra_towns.req.workers") == 4
+        boolean townAsks = countKey(town, "promo.terra_towns.req.workers") == 3
                 && countKey(town, "promo.terra_towns.req.trades") == 1
                 && countKey(town, "promo.terra_towns.req.new_structures") == 1
                 && namesBuilding(town, "promo.terra_towns.req.building", "pokecenter")
@@ -677,6 +678,45 @@ public final class JobAudit {
                 && t.getKey().equals(key) && t.getArgs().length > 0
                 && t.getArgs()[0] instanceof Component c && c.getContents() instanceof TranslatableContents a
                 && a.getKey().equals("building.terra_towns." + id));
+    }
+
+    /**
+     * Which job each profession belongs to (0.5.5, the user's grouping): every vanilla trade by
+     * its shipped tag, none of them guessed; the unemployed, nitwits and the gym leader in none;
+     * the Merchant job with nobody yet.
+     */
+    private static Map<String, Object> professions() {
+        Map<String, Object> out = new LinkedHashMap<>();
+        Map<String, Object> verdict = new LinkedHashMap<>();
+        Map<VillagerProfession, SettlementJob> expected = new java.util.LinkedHashMap<>();
+        expected.put(VillagerProfession.FARMER, SettlementJob.FARMER);
+        for (VillagerProfession p : List.of(VillagerProfession.ARMORER, VillagerProfession.FLETCHER,
+                VillagerProfession.LEATHERWORKER, VillagerProfession.TOOLSMITH, VillagerProfession.WEAPONSMITH)) {
+            expected.put(p, SettlementJob.SMITH);
+        }
+        for (VillagerProfession p : List.of(VillagerProfession.BUTCHER, VillagerProfession.CARTOGRAPHER,
+                VillagerProfession.CLERIC, VillagerProfession.FISHERMAN, VillagerProfession.LIBRARIAN,
+                VillagerProfession.SHEPHERD)) {
+            expected.put(p, SettlementJob.ARTISAN);
+        }
+        expected.put(VillagerProfession.MASON, SettlementJob.BUILDER);
+        expected.put(TerraTownsRegistries.GUARD_PROFESSION.get(), SettlementJob.GUARD);
+        List<String> wrong = new ArrayList<>();
+        expected.forEach((p, job) -> {
+            var a = com.terraTowns.settlement.ProfessionJobs.assignment(p);
+            if (a == null || a.job() != job || a.guessed()) {
+                wrong.add(p.name() + "=" + (a == null ? "none" : a.job().id() + (a.guessed() ? "?" : "")));
+            }
+        });
+        out.put("wrong", wrong);
+        verdict.put("vanillaTradesInTheirJobs", wrong.isEmpty());
+        verdict.put("noJobForUnemployedNitwitLeader",
+                com.terraTowns.settlement.ProfessionJobs.jobOf(VillagerProfession.NONE) == null
+                        && com.terraTowns.settlement.ProfessionJobs.jobOf(VillagerProfession.NITWIT) == null
+                        && com.terraTowns.settlement.ProfessionJobs.jobOf(TerraTownsRegistries.GYM_LEADER_PROFESSION.get()) == null);
+        verdict.put("merchantAwaitsItsVillager", !SettlementJob.MERCHANT.isStaffable());
+        out.put("verdict", verdict);
+        return out;
     }
 
     /** Admin reassignment (/terraTowns assign) at the data level: move a stand-in player twice. */

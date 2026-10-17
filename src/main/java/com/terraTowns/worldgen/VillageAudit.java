@@ -44,7 +44,8 @@ final class VillageAudit {
     /** Chunks generated around a village's start: villages reach ~80 blocks from their centre. */
     private static final int AREA_CHUNKS = 6;
     /** In placement-grid cells, not chunks: with Terra Continental's village spacing a cell is ~2 km. */
-    private static final int SEARCH_CELLS = 3;
+    /** Placement cells searched from each start point: 6 since villages were thinned (0.8.2). */
+    private static final int SEARCH_CELLS = 6;
 
     private VillageAudit() {
     }
@@ -195,7 +196,9 @@ final class VillageAudit {
             row.put("buildingTypes", types);
             row.put("unrecognised", unrecognised);
             row.put("unrecognisedTemplates", unrecognisedTemplates);
-            detected = types.getOrDefault("gym", 0) == 1 && types.getOrDefault("housing", 0) > 0;
+            // The gym, found by its desk. Housing isn't required: BWG's Pumpkin Patch and Forgotten
+            // villages are built without a single bed (real-pack rig, 2026-10-16).
+            detected = types.getOrDefault("gym", 0) == 1;
         }
         row.put("buildingsDetected", detected);
         TerraTowns.LOGGER.info("[village-audit] {}", row);

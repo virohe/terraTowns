@@ -44,10 +44,23 @@ public final class WorldEvents {
     private WorldEvents() {
     }
 
+    /** /reload may have changed the #terra_towns:job tags: classify professions again. */
+    @SubscribeEvent
+    public static void onTagsUpdated(net.neoforged.neoforge.event.TagsUpdatedEvent event) {
+        MinecraftServer server = net.neoforged.neoforge.server.ServerLifecycleHooks.getCurrentServer();
+        if (event.getUpdateCause() == net.neoforged.neoforge.event.TagsUpdatedEvent.UpdateCause.SERVER_DATA_LOAD
+                && server != null && server.overworld() != null) {
+            com.terraTowns.settlement.ProfessionJobs.classifyAll(server.overworld());
+        }
+    }
+
     @SubscribeEvent
     public static void onServerStarted(ServerStartedEvent event) {
         MinecraftServer server = event.getServer();
         ServerLevel level = server.overworld();
+        // Which job each profession belongs to: tags, else a guess (0.5.5). Before anything
+        // staffs a job or counts workers.
+        com.terraTowns.settlement.ProfessionJobs.classifyAll(level);
         SettlementManager manager = SettlementManager.get(level);
         if (manager.hasSpawnHamlets()) {
             // Dev-only: a SECOND boot against an already-generated world is the only place the

@@ -106,7 +106,15 @@ public final class RenderCheck {
             Screenshot.grab(mc.gameDirectory, "rendercheck-map-detail.png",
                     mc.getMainRenderTarget(), msg -> TerraTowns.LOGGER.info("[render-check] {}", msg.getString()));
         }
-        if (ticks == desk + 140) {
+        // 0.5.5: the Jobs tab with its first row (Farmer) open.
+        if (ticks == desk + 140 && mc.screen instanceof com.terraTowns.client.screen.GymLeadersDeskScreen screen) {
+            screen.showJobsForCheck(0);
+        }
+        if (ticks == desk + 160) {
+            Screenshot.grab(mc.gameDirectory, "rendercheck-jobs.png",
+                    mc.getMainRenderTarget(), msg -> TerraTowns.LOGGER.info("[render-check] {}", msg.getString()));
+        }
+        if (ticks == desk + 180) {
             TerraTowns.LOGGER.info("[render-check] done");
             mc.stop();
         }

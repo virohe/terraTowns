@@ -5,6 +5,27 @@ Entries before 0.4.8 were reconstructed on 2026-09-27 from DESIGN.md and session
 project had no version control until then. Snapshots of 0.3.13 (partial) and 0.4.0+ are in
 `releases/terra-towns/`.
 
+## 0.5.5 — 2026-10-16
+Jobs regrouped and other mods' professions classified (user's design, 2026-10-16).
+- **Job groups:** Farmer (farmer, beekeeper; rancher in 0.5.6), Smith (armorer, fletcher,
+  leatherworker, toolsmith, weaponsmith), **Artisan** (new: butcher, cartographer, cleric, fisherman,
+  librarian, shepherd), Builder (mason), Guard, and Merchant (opens with a Market Stall; its villager
+  arrives in 0.6). A job opens with any of its buildings: Artisans with a Library, Temple, Fishery,
+  Butcher's Shop or Loom Shed; Builders with a Workshop (a Warehouse before).
+- **Other mods' professions** are placed by `#terra_towns:job/<job>` villager-profession tags
+  (shipped for vanilla, Terra Towns' Guard and Friends & Foes' beekeeper; a datapack can add more),
+  else guessed from what they trade (food and crops: Farmer; armour, tools, weapons: Smith), then
+  from their workstation's name, else Artisan. Guesses are logged at startup and marked "(guessed)"
+  on the desk. Re-done after `/reload`. (`ProfessionJobs`)
+- **Jobs tab:** one row per job with how many villagers work it; click a row to open what to do
+  next, the trades working it ("Farmer ×3, Beekeeper ×1") and its workstations.
+- **Town checklist:** the "Pokémart merchants working" line is left out until that villager exists
+  (nothing could meet it once merchants stopped meaning butchers, leatherworkers and cartographers).
+- Villagers are counted on the settlement's footprint for jobs too.
+- Tests: harness stage `professions` (every vanilla trade in its job by tag, none guessed; no job for
+  the unemployed, nitwits or the gym leader; the Merchant job has nobody yet); `runRenderCheck`
+  screenshots the Jobs tab with a row open (`rendercheck-jobs.png`).
+
 ## 0.5.4 — 2026-10-16
 Playtest fixes for 0.5.3, and the building types settled on 2026-10-16.
 - **Map zoom.** Scroll over the map to zoom in and out on the cursor, or use the zoom bar

@@ -37,7 +37,7 @@ import java.util.Set;
  *   <li><b>Hamlet → Village:</b> Gym, Inn, Farm Plots, Smithy, Housing ×6; 10 villagers.</li>
  *   <li><b>Village → Town:</b> the village's buildings plus Pok&eacute;centre, Pok&eacute;mart,
  *       Market Stall, Warehouse and Guard Post; Housing ×10; 3 buildings registered since it became
- *       a village; working 3 farmers, 2 smiths, 1 guard, 1 merchant, 6 different trades in all;
+ *       a village; working 3 farmers, 2 smiths, 1 guard, 6 different trades in all;
  *       20 villagers.</li>
  *   <li><b>Town → City:</b> v2.0 — not promotable yet.</li>
  * </ul>
@@ -62,10 +62,14 @@ public final class SettlementPromotion {
             BuildingCategory.GYM, BuildingCategory.INN_TAVERN, BuildingCategory.FARM_PLOTS, BuildingCategory.SMITHY,
             BuildingCategory.POKECENTER, BuildingCategory.POKEMART, BuildingCategory.MARKET_STALL,
             BuildingCategory.STORAGE_CENTER, BuildingCategory.BARRACKS_GUARD_POST);
-    /** Workers a town needs per job, in checklist order. */
+    /**
+     * Workers a town needs per job, in checklist order. The "Pokémart merchant" the user asked
+     * for (2026-10-16) is left out until that villager exists: a requirement nobody can meet
+     * would block every town. (Until 0.5.5 butchers, leatherworkers and cartographers met it.)
+     */
     private static final List<Object[]> TOWN_WORKERS = List.of(
             new Object[]{SettlementJob.FARMER, 3}, new Object[]{SettlementJob.SMITH, 2},
-            new Object[]{SettlementJob.GUARD, 1}, new Object[]{SettlementJob.MERCHANT, 1});
+            new Object[]{SettlementJob.GUARD, 1});
 
     /** Beds per villager: "always about 15% more beds than villagers" (user, 2026-10-12). */
     public static final double BEDS_PER_VILLAGER = 1.15;

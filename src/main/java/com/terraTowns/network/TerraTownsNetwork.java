@@ -116,6 +116,7 @@ public final class TerraTownsNetwork {
      */
     public static void sendJobBoard(ServerPlayer player, ServerLevel level, SettlementData data) {
         JobBoard.restaff(level, data);
+        var workforce = JobBoard.workforce(level, data);
         List<SyncJobBoardPacket.Entry> jobs = new ArrayList<>();
         for (JobBoard.JobStatus status : JobBoard.board(data).values()) {
             Component detail = switch (status.status()) {
@@ -124,14 +125,45 @@ public final class TerraTownsNetwork {
                 case AWAITING_NPC -> Component.translatable("screen.terra_towns.desk.jobs.awaiting_npc");
                 case LOCKED_GYM -> Component.translatable("screen.terra_towns.desk.jobs.locked_gym");
                 case LOCKED_BUILDING -> Component.translatable("screen.terra_towns.desk.jobs.locked_building",
-                        Component.translatable("building.terra_towns." + status.job().unlockedBy().id()));
+                        buildingNames(status.job()));
                 case LOCKED_TIER -> Component.translatable("screen.terra_towns.desk.jobs.locked_tier");
             };
+            var trades = workforce.getOrDefault(status.job(), java.util.Map.of());
+            List<Component> breakdown = new ArrayList<>();
+            int workers = 0;
+            for (var e : trades.entrySet()) {
+                workers += e.getValue();
+                var assignment = com.terraTowns.settlement.ProfessionJobs.assignment(e.getKey());
+                breakdown.add(Component.translatable(assignment != null && assignment.guessed()
+                                ? "screen.terra_towns.desk.jobs.trade.guessed" : "screen.terra_towns.desk.jobs.trade",
+                        professionName(e.getKey()), e.getValue()));
+            }
             jobs.add(new SyncJobBoardPacket.Entry(status.job().displayName(), detail,
                     data.hasJobUnlocked(status.job()), status.holder() != null,
-                    JobBoard.workstations(level, status.job())));
+                    JobBoard.workstations(level, status.job()), workers, breakdown));
         }
         PacketDistributor.sendToPlayer(player, new SyncJobBoardPacket(data.id(), jobs));
+    }
+
+    /** "Library, Temple or Fishery": the buildings any one of which opens the job. */
+    private static Component buildingNames(com.terraTowns.settlement.SettlementJob job) {
+        net.minecraft.network.chat.MutableComponent out = Component.empty();
+        List<com.terraTowns.structure.BuildingCategory> list = java.util.Arrays.stream(
+                com.terraTowns.structure.BuildingCategory.values()).filter(job.buildings()::contains).toList();
+        for (int i = 0; i < list.size(); i++) {
+            if (i > 0) {
+                out.append(i == list.size() - 1 ? Component.translatable("screen.terra_towns.desk.jobs.or") : Component.literal(", "));
+            }
+            out.append(Component.translatable("building.terra_towns." + list.get(i).id()));
+        }
+        return out;
+    }
+
+    /** A profession's name as villagers show it ("Toolsmith"), or its id's last part. */
+    private static Component professionName(net.minecraft.world.entity.npc.VillagerProfession p) {
+        var key = net.minecraft.core.registries.BuiltInRegistries.VILLAGER_PROFESSION.getKey(p);
+        return Component.translatableWithFallback("entity." + key.getNamespace() + ".villager." + key.getPath(),
+                key.getPath().substring(0, 1).toUpperCase(java.util.Locale.ROOT) + key.getPath().substring(1).replace('_', ' '));
     }
 
     public static void sendAllSettlements(ServerPlayer player, Collection<SettlementData> settlements) {

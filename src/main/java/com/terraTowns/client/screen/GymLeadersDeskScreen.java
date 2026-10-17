@@ -100,6 +100,9 @@ public class GymLeadersDeskScreen extends Screen {
 
     // Job board (server-evaluated; arrives via SyncJobBoardPacket alongside the checklist).
     private List<SyncJobBoardPacket.Entry> jobs = List.of();
+    /** The job row opened to show its details (0.5.5), or -1. */
+    private int expandedJob = -1;
+    private static final int JOB_ROW_H = 14;
 
     // Map tab (0.5.3): the picture arrives with the desk sync (SyncSettlementMapPacket).
     @Nullable
@@ -153,6 +156,14 @@ public class GymLeadersDeskScreen extends Screen {
         tab = Tab.MAP;
         mapMode = buildings ? MapMode.BUILDINGS : MapMode.PLAIN;
         legendOpen = buildings;
+        rebuildWidgets();
+    }
+
+    /** Dev only ({@code RenderCheck}): show the Jobs tab with {@code row} open. */
+    public void showJobsForCheck(int row) {
+        commitName();
+        tab = Tab.JOBS;
+        expandedJob = row;
         rebuildWidgets();
     }
 
@@ -304,6 +315,13 @@ public class GymLeadersDeskScreen extends Screen {
         for (int i = 0; i < tabs.length; i++) {
             if (VanillaGui.overTab(mouseX, mouseY, leftPos, topPos, i)) {
                 switchTab(tabs[i]);
+                return true;
+            }
+        }
+        if (tab == Tab.JOBS) {
+            int row = jobRowAt(mouseX, mouseY);
+            if (row >= 0) {
+                expandedJob = expandedJob == row ? -1 : row;
                 return true;
             }
         }
@@ -621,9 +639,10 @@ public class GymLeadersDeskScreen extends Screen {
     }
 
     /**
-     * Jobs tab: one row per settlement job — a mark and the job's name, a line saying what to do
-     * next, and on the right the workstation blocks a villager can work at to fill it (hover one
-     * for its name). Every word and icon arrives pre-built from the server, so no job rule is
+     * Jobs tab (0.5.5, user's design): one row per job — a mark, its name and how many villagers
+     * work it. Click a row to open it: what to do next, which trades are working it ("Farmer ×3,
+     * Beekeeper ×1"), and the workstations that staff it (hover one for its name). One row is open
+     * at a time. Every word and icon arrives pre-built from the server, so no job rule is
      * re-derived here.
      */
     private void renderJobs(GuiGraphics graphics, int mouseX, int mouseY) {
@@ -632,36 +651,94 @@ public class GymLeadersDeskScreen extends Screen {
                     leftPos + PAD, topPos + 22, WIDTH - 2 * PAD, VanillaGui.SUBTLE);
             return;
         }
-        int rowH = 34;
+        int x = leftPos + PAD;
+        int w = WIDTH - 2 * PAD;
         int y = topPos + 20;
         ItemStack hovered = ItemStack.EMPTY;
-        for (SyncJobBoardPacket.Entry entry : jobs) {
-            int slots = Math.min(entry.workstations().size(), 3);
-            int textW = WIDTH - 2 * PAD - slots * 18 - (slots > 0 ? 4 : 0);
-
-            String mark = entry.staffed() ? "✔ " : (entry.unlocked() ? "○ " : "✖ ");
-            ChatFormatting colour = entry.staffed() ? ChatFormatting.DARK_GREEN
+        for (int i = 0; i < jobs.size(); i++) {
+            SyncJobBoardPacket.Entry entry = jobs.get(i);
+            boolean open = i == expandedJob;
+            boolean overRow = mouseX >= x && mouseX < x + w && mouseY >= y && mouseY < y + JOB_ROW_H;
+            if (open || overRow) {
+                graphics.fill(x - 2, y - 2, x + w + 2, y + JOB_ROW_H - 2, open ? 0x30000000 : 0x18000000);
+            }
+            String mark = entry.workers() > 0 && entry.unlocked() ? "✔ " : (entry.unlocked() ? "○ " : "✖ ");
+            ChatFormatting colour = entry.workers() > 0 && entry.unlocked() ? ChatFormatting.DARK_GREEN
                     : (entry.unlocked() ? ChatFormatting.GOLD : ChatFormatting.DARK_GRAY);
-            graphics.drawString(font, Component.literal(mark).withStyle(colour)
+            graphics.drawString(font, Component.literal(open ? "▾ " : "▸ ").withStyle(ChatFormatting.DARK_GRAY)
+                            .append(Component.literal(mark).withStyle(colour))
                             .append(entry.name().copy().withStyle(style -> style.withColor(VanillaGui.LABEL))),
-                    leftPos + PAD, y, VanillaGui.LABEL, false);
-            drawWrapped(graphics, entry.detail(), leftPos + PAD + 10, y + LINE, textW - 10, VanillaGui.SUBTLE);
-
-            for (int i = 0; i < slots; i++) {
-                int sx = leftPos + WIDTH - PAD - (slots - i) * 18;
-                int sy = y + 2;
+                    x, y, VanillaGui.LABEL, false);
+            String count = "×" + entry.workers();
+            graphics.drawString(font, count, x + w - font.width(count), y, VanillaGui.LABEL, false);
+            y += JOB_ROW_H;
+            if (!open) {
+                continue;
+            }
+            // The details, indented under the row.
+            int dx = x + 12;
+            int slots = Math.min(entry.workstations().size(), 5);
+            int textW = w - 12 - (slots > 0 ? 3 * 18 + 4 : 0);
+            int detailTop = y;
+            y = drawWrapped(graphics, entry.detail(), dx, y, textW, VanillaGui.SUBTLE);
+            if (entry.breakdown().isEmpty()) {
+                y = drawWrapped(graphics, Component.translatable("screen.terra_towns.desk.jobs.nobody"),
+                        dx, y, textW, VanillaGui.LABEL);
+            }
+            for (Component line : entry.breakdown()) {
+                y = drawWrapped(graphics, line, dx, y, textW, VanillaGui.LABEL);
+            }
+            for (int k = 0; k < slots; k++) {
+                int sx = x + w - (3 - k % 3) * 18;
+                int sy = detailTop + (k / 3) * 18;
                 VanillaGui.slot(graphics, sx, sy);
-                ItemStack stack = entry.workstations().get(i);
+                ItemStack stack = entry.workstations().get(k);
                 graphics.renderItem(stack, sx + 1, sy + 1);
                 if (mouseX >= sx && mouseX < sx + 18 && mouseY >= sy && mouseY < sy + 18) {
                     hovered = stack;
                 }
             }
-            y += rowH;
+            y = Math.max(y, detailTop + ((slots + 2) / 3) * 18) + 4;
+        }
+        if (expandedJob < 0) {
+            graphics.drawString(font, Component.translatable("screen.terra_towns.desk.jobs.expand"),
+                    x, topPos + HEIGHT - PAD - 9, VanillaGui.SUBTLE, false);
         }
         if (!hovered.isEmpty()) {
             graphics.renderTooltip(font, hovered, mouseX, mouseY);
         }
+    }
+
+    /** The job row (not its open details) under the cursor, or -1. Mirrors {@link #renderJobs}'s layout. */
+    private int jobRowAt(double mx, double my) {
+        int x = leftPos + PAD;
+        int w = WIDTH - 2 * PAD;
+        int y = topPos + 20;
+        for (int i = 0; i < jobs.size(); i++) {
+            if (mx >= x && mx < x + w && my >= y && my < y + JOB_ROW_H) {
+                return i;
+            }
+            y += JOB_ROW_H;
+            if (i == expandedJob) {
+                y += expandedHeight(jobs.get(i));
+            }
+        }
+        return -1;
+    }
+
+    /** How tall an open job's details draw (text lines vs. the workstation grid, plus a gap). */
+    private int expandedHeight(SyncJobBoardPacket.Entry entry) {
+        int w = WIDTH - 2 * PAD;
+        int slots = Math.min(entry.workstations().size(), 5);
+        int textW = w - 12 - (slots > 0 ? 3 * 18 + 4 : 0);
+        int lines = font.split(entry.detail(), textW).size();
+        if (entry.breakdown().isEmpty()) {
+            lines += font.split(Component.translatable("screen.terra_towns.desk.jobs.nobody"), textW).size();
+        }
+        for (Component line : entry.breakdown()) {
+            lines += font.split(line, textW).size();
+        }
+        return Math.max(lines * LINE, ((slots + 2) / 3) * 18) + 4;
     }
 
     private void renderSections(GuiGraphics graphics) {
