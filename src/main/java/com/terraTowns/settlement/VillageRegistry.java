@@ -52,6 +52,19 @@ public final class VillageRegistry {
 
     private static final Queue<Found> QUEUE = new ConcurrentLinkedQueue<>();
 
+    /**
+     * In the village tag but not villages (user, 2026-10-16): BWG's Pumpkin Patches are home to
+     * pumpkin wardens, not villagers, and its Forgotten villages are ruins with nobody in them.
+     * They get no gym and never become settlements.
+     */
+    public static final java.util.Set<String> NOT_VILLAGES = java.util.Set.of(
+            "biomeswevegone:village/pumpkin_patch", "biomeswevegone:village/forgotten");
+
+    /** Is this village-tagged structure a village Terra Towns settles? */
+    public static boolean isVillage(@javax.annotation.Nullable ResourceLocation id) {
+        return id != null && !NOT_VILLAGES.contains(id.toString());
+    }
+
     private VillageRegistry() {
     }
 
@@ -64,7 +77,8 @@ public final class VillageRegistry {
         for (Map.Entry<Structure, StructureStart> e : chunk.getAllStarts().entrySet()) {
             StructureStart start = e.getValue();
             if (!start.isValid()
-                    || !structures.wrapAsHolder(e.getKey()).is(StructureTags.VILLAGE)) {
+                    || !structures.wrapAsHolder(e.getKey()).is(StructureTags.VILLAGE)
+                    || !isVillage(structures.getKey(e.getKey()))) {
                 continue;
             }
             int gyms = countGyms(start);

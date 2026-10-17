@@ -5,8 +5,6 @@
     "mod_id": "biomeswevegone"
   },
   "template_pools": [
-    "biomeswevegone:village/forgotten/houses",
-    "biomeswevegone:village/pumpkin_patch/houses",
     "biomeswevegone:village/red_rock/houses",
     "biomeswevegone:village/salem/houses",
     "biomeswevegone:village/skyris/houses",

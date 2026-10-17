@@ -5,6 +5,14 @@ Entries before 0.4.8 were reconstructed on 2026-09-27 from DESIGN.md and session
 project had no version control until then. Snapshots of 0.3.13 (partial) and 0.4.0+ are in
 `releases/terra-towns/`.
 
+## 0.5.6 — 2026-10-16
+- **BWG Pumpkin Patches and Forgotten villages aren't villages** (user, 2026-10-16): Pumpkin Patches
+  are home to pumpkin wardens, not villagers, and Forgotten villages are ruins with nobody in them
+  (no villagers pool, no villager in any template). They get no gym and never become settlements.
+  Terra Continental 0.8.2 gives them their own, sparser spawn grids. (`VillageRegistry.NOT_VILLAGES`)
+- Tests: `VillageAudit` checks only real villages. (Since 0.5.5 it requires the gym but no Housing,
+  as BWG's Pumpkin Patch houses have no beds, and searches wider, since villages are sparser.)
+
 ## 0.5.5 — 2026-10-16
 Jobs regrouped and other mods' professions classified (user's design, 2026-10-16).
 - **Job groups:** Farmer (farmer, beekeeper; rancher in 0.5.6), Smith (armorer, fletcher,

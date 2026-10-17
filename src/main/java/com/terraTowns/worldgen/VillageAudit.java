@@ -56,7 +56,9 @@ final class VillageAudit {
 
     static Map<String, Object> run(ServerLevel level) {
         int wanted = Integer.getInteger(PROPERTY, 0);
-        var villages = level.registryAccess().registryOrThrow(Registries.STRUCTURE).getTag(StructureTags.VILLAGE).orElseThrow();
+        var villageTag = level.registryAccess().registryOrThrow(Registries.STRUCTURE).getTag(StructureTags.VILLAGE).orElseThrow();
+        var villages = net.minecraft.core.HolderSet.direct(villageTag.stream()
+                .filter(h -> VillageRegistry.isVillage(h.unwrapKey().map(k -> k.location()).orElse(null))).toList());
         List<Map<String, Object>> rows = new ArrayList<>();
         Set<Long> seen = new HashSet<>();
         int[][] dirs = {{1, 0}, {0, 1}, {-1, 0}, {0, -1}, {1, 1}, {-1, -1}, {1, -1}, {-1, 1}};
