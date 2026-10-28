@@ -289,8 +289,35 @@ public final class HamletAudit {
         if (VillageAudit.enabled()) {
             report.put("villages", VillageAudit.run(server.overworld()));
         }
+        if (TerrainAudit.enabled()) {
+            report.put("terrain", TerrainAudit.run(server.overworld()));
+        }
         write(report);
         maybeHalt(server);
+    }
+
+    /** Terrain-only boot: measure the terrain at fixed places, write it, halt (TerrainAudit). */
+    public static void terrainOnly(MinecraftServer server) {
+        Map<String, Object> report = new LinkedHashMap<>();
+        report.put("terrain", TerrainAudit.fixed(server.overworld()));
+        write(report);
+        maybeHalt(server);
+    }
+
+    /** Write a dev report to {@code path} as JSON (the landmass audit's own file). */
+    public static void writeTo(String path, Map<String, Object> report) {
+        try {
+            Path out = Path.of(path);
+            if (out.getParent() != null) {
+                Files.createDirectories(out.getParent());
+            }
+            try (Writer w = Files.newBufferedWriter(out, StandardCharsets.UTF_8)) {
+                new GsonBuilder().setPrettyPrinting().create().toJson(report, w);
+            }
+            TerraTowns.LOGGER.info("[hamlet-audit] wrote {}", out.toAbsolutePath());
+        } catch (IOException e) {
+            TerraTowns.LOGGER.error("[hamlet-audit] could not write {}", path, e);
+        }
     }
 
     private static void write(Map<String, Object> report) {

@@ -1531,6 +1531,57 @@ public final class HamletPiece {
                 }
             }
         }
+
+        // The ground a trunk stood on: vanilla turns the grass under a tree's trunk to dirt, and
+        // felling the trunk left that dirt bare: squares of dirt across the hamlet (playtest
+        // 2026-10-27). It takes the surface its neighbours have (grass, podzol, moss…).
+        for (BlockPos r : felled) {
+            regrassUnder(r);
+        }
+    }
+
+    /**
+     * {@code removed} was a trunk block and is now air: if it stood on dirt (vanilla turns the
+     * grass under a growing trunk into dirt), give that ground the surface its neighbours have.
+     */
+    private void regrassUnder(BlockPos removed) {
+        BlockPos under = removed.below();
+        BlockState soil = level.getBlockState(under);
+        if (!level.getBlockState(removed).isAir()
+                || !(soil.is(Blocks.DIRT) || soil.is(Blocks.ROOTED_DIRT) || soil.is(Blocks.COARSE_DIRT))) {
+            return;
+        }
+        BlockState surface = neighbourSurface(under);
+        if (surface != null && !surface.is(soil.getBlock())) {
+            set(under, surface);
+        }
+    }
+
+    /**
+     * The most common natural surface block around {@code pos} with open air above it, if any.
+     * Plain dirt doesn't vote: a 2x2 trunk's four dirt squares would keep each other bare.
+     */
+    @Nullable
+    private BlockState neighbourSurface(BlockPos pos) {
+        Map<Block, Integer> votes = new HashMap<>();
+        for (int dx = -1; dx <= 1; dx++) {
+            for (int dz = -1; dz <= 1; dz++) {
+                if (dx == 0 && dz == 0) {
+                    continue;
+                }
+                BlockPos n = pos.offset(dx, 0, dz);
+                BlockState st = level.getBlockState(n);
+                if (level.getBlockState(n.above()).isSolidRender(level, n.above())) {
+                    continue; // buried, not a surface
+                }
+                if (st.is(Blocks.GRASS_BLOCK) || st.is(Blocks.PODZOL) || st.is(Blocks.MYCELIUM)
+                        || st.is(Blocks.MOSS_BLOCK) || st.is(Blocks.COARSE_DIRT)) {
+                    votes.merge(st.getBlock(), 1, Integer::sum);
+                }
+            }
+        }
+        return votes.entrySet().stream().max(Map.Entry.comparingByValue())
+                .map(e -> e.getKey().defaultBlockState()).orElse(null);
     }
 
     /** Dev harness: run the tree clear around {@code footprints} (see JobAudit#treeFelling). */
@@ -1584,6 +1635,11 @@ public final class HamletPiece {
             return false;
         }
         if (st.is(BlockTags.LOGS)) {
+            return true;
+        }
+        // A natural bee nest grows on its tree's trunk. Its block entity (the bees) kept it out of
+        // the containers-aren't-trees rule's way until 2026-10-27, so felling left it in mid-air.
+        if (st.is(Blocks.BEE_NEST)) {
             return true;
         }
         if (st.canBeReplaced() || st.hasBlockEntity() || looksBuilt(st)
@@ -2100,7 +2156,13 @@ public final class HamletPiece {
                     BlockState s = level.getBlockState(p.set(minX + dx, y, minZ + dz));
                     if (!s.isAir() && !isTerrain(s) && s.getFluidState().isEmpty()
                             && !isStructure(placedFootprints, p)) {
-                        set(new BlockPos(minX + dx, y, minZ + dz), Blocks.AIR.defaultBlockState());
+                        BlockPos at = new BlockPos(minX + dx, y, minZ + dz);
+                        set(at, Blocks.AIR.defaultBlockState());
+                        if (s.is(BlockTags.LOGS)) {
+                            // The plot's margin stays open ground: a trunk felled there left its
+                            // dirt bare too (playtest 2026-10-27).
+                            regrassUnder(at);
+                        }
                     }
                 }
             }

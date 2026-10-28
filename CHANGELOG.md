@@ -5,6 +5,20 @@ Entries before 0.4.8 were reconstructed on 2026-09-27 from DESIGN.md and session
 project had no version control until then. Snapshots of 0.3.13 (partial) and 0.4.0+ are in
 `releases/terra-towns/`.
 
+## 0.5.7 — 2026-10-27
+Hamlet tree clearing leaves no debris (playtest, 2026-10-27).
+- **No floating bee nests.** A natural bee nest grows on its tree's trunk, but its block entity
+  kept it out of the felling, which skips containers; felling the tree left the nest in mid-air.
+  Bee nests now come down with their tree.
+- **No bare dirt where trunks stood.** Vanilla turns the grass under a growing trunk into dirt;
+  felling the trunk, or clearing it from a building's plot, left that dirt exposed: squares of dirt
+  across the hamlet. The ground now takes the surface its neighbours have (grass, podzol, moss…).
+  On the real-pack rig's seed, bare dirt on open ground around the eight hamlets went from 201
+  blocks to 0 (what dirt remains is vanilla's own: house gardens, pen mud spots).
+- Tests: the harness's staged tree-felling scene adds a tree on grass with dirt under its trunk and
+  a bee nest on its side (`beeNestGone`, `grassUnderFelledTrunk`, both failing on 0.5.6).
+  `tools/python/hamlet_debris.py` counts both in a real world.
+
 ## 0.5.6 — 2026-10-16
 - **BWG Pumpkin Patches and Forgotten villages aren't villages** (user, 2026-10-16): Pumpkin Patches
   are home to pumpkin wardens, not villagers, and Forgotten villages are ruins with nobody in them

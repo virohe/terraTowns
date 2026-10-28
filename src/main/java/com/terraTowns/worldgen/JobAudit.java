@@ -817,6 +817,22 @@ public final class JobAudit {
         level.setBlock(branch, Blocks.OAK_LOG.defaultBlockState(), 3);
         level.setBlock(plate, Blocks.DIRT.defaultBlockState(), 3);
 
+        // A tree on grass the way vanilla grows one: dirt under its trunk, a bee nest on its side
+        // (playtest 2026-10-27: hamlets were left with bee nests in mid-air and squares of bare
+        // dirt where trunks had stood).
+        for (int dx = 17; dx <= 21; dx++) {
+            for (int dz = 17; dz <= 21; dz++) {
+                level.setBlock(at.apply(dx, dz), Blocks.GRASS_BLOCK.defaultBlockState(), 3);
+            }
+        }
+        BlockPos grassTrunk = at.apply(19, 19);
+        level.setBlock(grassTrunk, Blocks.DIRT.defaultBlockState(), 3);
+        for (int h = 1; h <= 5; h++) {
+            level.setBlock(grassTrunk.above(h), Blocks.OAK_LOG.defaultBlockState(), 3);
+        }
+        BlockPos nest = grassTrunk.above(3).east();
+        level.setBlock(nest, Blocks.BEE_NEST.defaultBlockState(), 3);
+
         HamletPiece.fellTreesForAudit(level, footprints);
 
         Map<String, Object> verdict = new LinkedHashMap<>();
@@ -827,6 +843,8 @@ public final class JobAudit {
         verdict.put("mushroomStemFelled", level.getBlockState(stem.above(2)).isAir());
         verdict.put("mushroomCapGone", cap.stream().allMatch(cp -> level.getBlockState(cp).isAir()));
         verdict.put("hangingSoilGone", level.getBlockState(plate).isAir() && level.getBlockState(branch).isAir());
+        verdict.put("beeNestGone", level.getBlockState(nest).isAir());
+        verdict.put("grassUnderFelledTrunk", level.getBlockState(grassTrunk).is(Blocks.GRASS_BLOCK));
         verdict.put("groundUntouched", level.getBlockState(at.apply(19, 12)).is(Blocks.STONE)
                 && level.getBlockState(at.apply(13, 8)).is(Blocks.STONE));
 

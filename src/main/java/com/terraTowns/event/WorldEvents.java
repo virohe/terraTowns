@@ -61,6 +61,18 @@ public final class WorldEvents {
         // Which job each profession belongs to: tags, else a guess (0.5.5). Before anything
         // staffs a job or counts workers.
         com.terraTowns.settlement.ProfessionJobs.classifyAll(level);
+        if (com.terraTowns.worldgen.TerrainAudit.terrainOnly()) {
+            // Dev: sweeping terrain settings or auditing a seed's villages; no hamlets. With an
+            // audit path it measures the terrain and halts; without, the server just waits.
+            if (HamletAudit.ENABLED) {
+                HamletAudit.terrainOnly(server);
+            }
+            String landmass = System.getProperty("terratowns.landmassAudit");
+            if (landmass != null) {
+                HamletAudit.writeTo(landmass, java.util.Map.of("landmass", com.terraTowns.worldgen.TerrainAudit.landmass(level)));
+            }
+            return;
+        }
         SettlementManager manager = SettlementManager.get(level);
         if (manager.hasSpawnHamlets()) {
             // Dev-only: a SECOND boot against an already-generated world is the only place the
