@@ -5,6 +5,13 @@ Entries before 0.4.8 were reconstructed on 2026-09-27 from DESIGN.md and session
 project had no version control until then. Snapshots of 0.3.13 (partial) and 0.4.0+ are in
 `releases/terra-towns/`.
 
+## 0.5.8 — 2026-10-30
+- **The loading screen shows the spawn-hamlet search** (the user, 2026-10-30: the screen sat at 100%
+  with nothing moving while hamlets were found). With Terra Continental's loading map, each spot
+  being checked is marked, chosen sites stay as dots, and a line says what's happening (finding a
+  coast, checking sites, building hamlet N of M). Needs Terra Continental 0.10.0;
+  `integration/LoadingMapHook` reaches it by reflection and does nothing without it.
+
 ## 0.5.7 — 2026-10-27
 Hamlet tree clearing leaves no debris (playtest, 2026-10-27).
 - **No floating bee nests.** A natural bee nest grows on its tree's trunk, but its block entity

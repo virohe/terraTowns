@@ -300,6 +300,9 @@ public final class CoastalSpawnFinder {
                 int surface = generator.getBaseHeight(bx, bz, Heightmap.Types.WORLD_SURFACE_WG, level, randomState);
                 BlockPos pos = new BlockPos(bx, surface, bz);
                 found.add(pos);
+                com.terraTowns.integration.LoadingMapHook.chosen(bx, bz);
+                com.terraTowns.integration.LoadingMapHook.message(
+                        "Searching wider for hamlet sites: " + found.size() + " of " + count + " found");
                 if (anchor == null) {
                     anchor = pos;
                 }
@@ -398,6 +401,7 @@ public final class CoastalSpawnFinder {
         List<BlockPos> found = new ArrayList<>();
         int[] stats = new int[STAT_NAMES.length];
 
+        com.terraTowns.integration.LoadingMapHook.message("Checking the coast for hamlet sites: 0 of " + count + " found");
         for (int k = 0; k < count; k++) {
             if (System.nanoTime() > deadline) {
                 TerraTowns.LOGGER.warn("Spawn-search budget exhausted after {} sites — keeping what qualified",
@@ -409,6 +413,9 @@ public final class CoastalSpawnFinder {
                     generator, level, randomState, biomeSource, sampler, manager, seaLevel);
             if (site != null) {
                 found.add(site);
+                com.terraTowns.integration.LoadingMapHook.chosen(site.getX(), site.getZ());
+                com.terraTowns.integration.LoadingMapHook.message(
+                        "Checking the coast for hamlet sites: " + found.size() + " of " + count + " found");
                 TerraTowns.LOGGER.info("Spawn-hamlet candidate #{} at {} (coast POI {}/{})",
                         found.size(), site, k + 1, count);
             } else {
@@ -595,6 +602,7 @@ public final class CoastalSpawnFinder {
     private static boolean qualifies(ChunkGenerator generator, ServerLevel level, RandomState randomState,
                                      BiomeSource biomeSource, Climate.Sampler sampler,
                                      SettlementManager manager, int seaLevel, int bx, int bz, int[] stats) {
+        com.terraTowns.integration.LoadingMapHook.probe(bx, bz);
         Holder<Biome> here = biomeAt(biomeSource, sampler, bx, seaLevel, bz);
         if (!isCozy(here)) {
             if (stats != null) {

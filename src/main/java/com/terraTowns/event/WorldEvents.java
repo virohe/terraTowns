@@ -87,6 +87,7 @@ public final class WorldEvents {
         }
 
         long findStart = System.nanoTime();
+        com.terraTowns.integration.LoadingMapHook.message("Looking for a sheltered coast for the starting hamlets");
         List<BlockPos> sites = CoastalSpawnFinder.findCandidates(
                 level, CANDIDATE_COUNT, CANDIDATE_SPACING, CANDIDATE_ANCHOR_RADIUS);
         long findMs = (System.nanoTime() - findStart) / 1_000_000L;
@@ -111,9 +112,14 @@ public final class WorldEvents {
         } else {
             // Single player: this is still the loading screen, the best place for the wait.
             int n = 0;
+            com.terraTowns.integration.LoadingMapHook.clearProbe();
             for (BlockPos site : sites) {
+                com.terraTowns.integration.LoadingMapHook.message("Building hamlet " + (n + 1) + " of " + sites.size());
+                com.terraTowns.integration.LoadingMapHook.probe(site.getX(), site.getZ());
                 buildNext(server, level, manager, site, ++n);
             }
+            com.terraTowns.integration.LoadingMapHook.clearProbe();
+            com.terraTowns.integration.LoadingMapHook.message("Hamlets built. Taking you to the first one");
             finishSpawnHamlets(server, manager);
         }
     }
