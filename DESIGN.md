@@ -189,6 +189,14 @@ entity. Coastal hamlet spawning hooks Terra Continental's coastline data to plac
 hamlet within ~100 blocks of a coast; structure placement is data-driven under
 `data/terra_towns/worldgen` + `structures/` (TODO).
 
+**Where the starting hamlets go** (user's design, 2026-10-31). Terra Continental says where the
+spawn continent's coast runs and where its villages are planned (`SpawnContinent`, reached by
+`SpawnContinentHook`); the hamlets spread roughly evenly round that coast, farthest-point, and
+keep a long walk (`VILLAGE_CLEARANCE`, 1200 blocks) from every village so the world reads
+as big from the first minute. They aren't paired with villages: the story's first walk is to the
+central village. Without Continental's plan (the dev harness) `CoastalSpawnFinder` falls back to
+tracing the biome coast itself.
+
 ### 2.7 Routes — storage & rendering
 
 A route is an **edge** in the settlement graph: an unordered pair of settlement UUIDs plus

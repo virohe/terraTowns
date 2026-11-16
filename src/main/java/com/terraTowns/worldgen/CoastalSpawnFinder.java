@@ -222,6 +222,12 @@ public final class CoastalSpawnFinder {
         SettlementManager manager = SettlementManager.get(level);
         int seaLevel = generator.getSeaLevel();
 
+        List<BlockPos> planned = alongPlannedCoast(level, count, minSpacing,
+                generator, randomState, biomeSource, sampler, manager, seaLevel);
+        if (planned != null && !planned.isEmpty()) {
+            return planned;
+        }
+
         Map<Long, Boolean> landCache = new HashMap<>();
         Set<Long> tracedCells = new HashSet<>();
 
@@ -273,6 +279,142 @@ public final class CoastalSpawnFinder {
                 + "falling back to the dense spiral scan", landmasses);
         return spiralScan(level, count, minSpacing, anchorRadius,
                 generator, randomState, biomeSource, sampler, manager, seaLevel);
+    }
+
+    // --- along Terra Continental's planned coast -------------------------------
+
+    /**
+     * Least distance from a hamlet to a planned village (the user, 2026-10-31: a fair walk between the
+     * two, so the world reads as big from the moment a player spawns). About a 4.5-minute walk; the
+     * spawn continent's villages are ~3000 blocks apart, so most of its coast is this far from them.
+     */
+    public static final int VILLAGE_CLEARANCE = 1200;
+    /**
+     * Offsets (blocks) from a plan coast cell toward its sea neighbour, tried in order: the shore lies
+     * somewhere in the 128 blocks between the two, and the site sits 22-50 blocks inland of it.
+     */
+    private static final int[] PLAN_PROBES = {112, 100, 88, 76, 64, 52, 40, 28, 16, 4, -8, -20, -32, -44};
+
+    /**
+     * Hamlets spread evenly round the spawn continent's coast as Terra Continental plans it (the user,
+     * 2026-10-31: the 32-block trace of the biome coast ran 120000 cells without closing and bunched all
+     * eight hamlets on the west side). Farthest-point, like Continental's villages: each hamlet goes on
+     * the coast cell farthest in a straight line from the hamlets so far, the first on the cell farthest
+     * from the continent's villages' middle. Spacing by distance ALONG the coast was tried first and gave
+     * a fjord-cut peninsula three of the eight (rig, same seed): its coast is long, its land isn't.
+     * A cell under {@link #VILLAGE_CLEARANCE} from a village counts at half its distance, so the
+     * clearance gives way only where the coast leaves no other choice; such a hamlet is logged. A cell
+     * with no qualifying spot is dropped and the next best tried; when no cell is left, fewer hamlets
+     * (quality first, as before).
+     *
+     * @return null when Terra Continental has no plan, so the caller traces the coast itself
+     */
+    private static List<BlockPos> alongPlannedCoast(ServerLevel level, int count, int minSpacing,
+                                                    ChunkGenerator generator, RandomState randomState,
+                                                    BiomeSource biomeSource, Climate.Sampler sampler,
+                                                    SettlementManager manager, int seaLevel) {
+        int[] coast = com.terraTowns.integration.SpawnContinentHook.coast(level);
+        int[] villages = com.terraTowns.integration.SpawnContinentHook.villages(level);
+        if (coast == null || villages == null || coast.length < 4 * count) {
+            return null;
+        }
+        long start = System.nanoTime();
+        int m = coast.length / 4;
+        double[] clear = new double[m];
+        for (int i = 0; i < m; i++) {
+            clear[i] = villageDistance(villages, coast[4 * i], coast[4 * i + 1]);
+        }
+        double midX = 0, midZ = 0;
+        for (int v = 0; v + 1 < villages.length; v += 2) {
+            midX += villages[v];
+            midZ += villages[v + 1];
+        }
+        midX /= Math.max(1, villages.length / 2);
+        midZ /= Math.max(1, villages.length / 2);
+        TerraTowns.LOGGER.info("Planned coast: {} cells, {} villages", m, villages.length / 2);
+
+        List<BlockPos> found = new ArrayList<>();
+        boolean[] dropped = new boolean[m];
+        int[] stats = new int[STAT_NAMES.length];
+        com.terraTowns.integration.LoadingMapHook.message("Checking the coast for hamlet sites: 0 of " + count + " found");
+        long deadline = start + SEARCH_BUDGET_NANOS;
+        while (found.size() < count && System.nanoTime() < deadline) {
+            int best = -1;
+            double bestScore = -1;
+            for (int i = 0; i < m; i++) {
+                if (dropped[i]) continue;
+                int x = coast[4 * i], z = coast[4 * i + 1];
+                double d;
+                if (found.isEmpty()) {
+                    d = Math.hypot(x - midX, z - midZ);
+                } else {
+                    d = Double.MAX_VALUE;
+                    for (BlockPos p : found) d = Math.min(d, Math.hypot(p.getX() - x, p.getZ() - z));
+                }
+                double score = clear[i] >= VILLAGE_CLEARANCE ? d : d / 2;
+                if (score > bestScore) {
+                    bestScore = score;
+                    best = i;
+                }
+            }
+            if (best < 0) break;
+            dropped[best] = true;
+            int clearance = clear[best] >= VILLAGE_CLEARANCE ? VILLAGE_CLEARANCE : 0;
+            BlockPos site = probePlanCell(coast, best, villages, clearance, found, minSpacing, stats,
+                    generator, level, randomState, biomeSource, sampler, manager, seaLevel);
+            if (site == null) continue;
+            found.add(site);
+            double toVillage = villageDistance(villages, site.getX(), site.getZ());
+            com.terraTowns.integration.LoadingMapHook.chosen(site.getX(), site.getZ());
+            com.terraTowns.integration.LoadingMapHook.message(
+                    "Checking the coast for hamlet sites: " + found.size() + " of " + count + " found");
+            TerraTowns.LOGGER.info("Spawn-hamlet candidate #{} at {} (planned coast, {} blocks from the nearest village{})",
+                    found.size(), site, Math.round(toVillage), toVillage < VILLAGE_CLEARANCE ? ", under the clearance" : "");
+        }
+        if (found.size() < count) {
+            TerraTowns.LOGGER.info("Planned coast gave {} of {} hamlet sites (quality-first)", found.size(), count);
+        }
+        StringBuilder report = new StringBuilder();
+        for (int i = 0; i < STAT_NAMES.length; i++) {
+            report.append(i > 0 ? ", " : "").append(STAT_NAMES[i]).append(' ').append(stats[i]);
+        }
+        TerraTowns.LOGGER.info("Site-filter tallies: {}", report);
+        TerraTowns.LOGGER.info("Planned coast: {} sites placed ({} ms)", found.size(), (System.nanoTime() - start) / 1_000_000L);
+        List<CoastCell> drawn = new ArrayList<>();
+        for (int i = 0; i < m; i++) {
+            drawn.add(new CoastCell(coast[4 * i] / CELL, coast[4 * i + 1] / CELL, coast[4 * i + 2], coast[4 * i + 3]));
+        }
+        dumpBiomeMap(biomeSource, sampler, seaLevel, drawn, found);
+        return found;
+    }
+
+    /** Probe one plan coast cell, from the sea side inland; null if no spot qualifies. */
+    private static BlockPos probePlanCell(int[] coast, int i, int[] villages, int clearance,
+                                          List<BlockPos> found, int minSpacing, int[] stats,
+                                          ChunkGenerator generator, ServerLevel level, RandomState randomState,
+                                          BiomeSource biomeSource, Climate.Sampler sampler,
+                                          SettlementManager manager, int seaLevel) {
+        int cx = coast[4 * i], cz = coast[4 * i + 1], sx = coast[4 * i + 2], sz = coast[4 * i + 3];
+        double norm = Math.hypot(sx, sz);
+        for (int t : PLAN_PROBES) {
+            int bx = cx + (int) Math.round(sx * t / norm);
+            int bz = cz + (int) Math.round(sz * t / norm);
+            if (villageDistance(villages, bx, bz) >= clearance
+                    && farEnough(found, bx, bz, minSpacing)
+                    && qualifies(generator, level, randomState, biomeSource, sampler, manager, seaLevel, bx, bz, stats)) {
+                int surface = generator.getBaseHeight(bx, bz, Heightmap.Types.WORLD_SURFACE_WG, level, randomState);
+                return new BlockPos(bx, surface, bz);
+            }
+        }
+        return null;
+    }
+
+    private static double villageDistance(int[] villages, int x, int z) {
+        double d = Double.MAX_VALUE;
+        for (int v = 0; v + 1 < villages.length; v += 2) {
+            d = Math.min(d, Math.hypot(villages[v] - x, villages[v + 1] - z));
+        }
+        return d;
     }
 
     /**

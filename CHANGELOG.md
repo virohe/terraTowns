@@ -5,6 +5,21 @@ Entries before 0.4.8 were reconstructed on 2026-09-27 from DESIGN.md and session
 project had no version control until then. Snapshots of 0.3.13 (partial) and 0.4.0+ are in
 `releases/terra-towns/`.
 
+## 0.5.10 — 2026-11-01
+- **Starting hamlets spread round the whole coast, well away from villages** (the user, 2026-10-31:
+  on the playtest seed all eight sat on the west side, two of them 654 blocks apart, several right
+  beside villages). The old finder traced the biome coastline itself on a 32-block grid; there it ran
+  its 120000-cell budget without closing the loop and spaced the hamlets along that runaway path
+  (260 s). Now Terra Continental says where the spawn continent's coast runs and where its villages
+  are planned (`SpawnContinentHook`, needs Terra Continental 0.10.2), and the hamlets go
+  farthest-point along that coast: each on the coast spot farthest from the hamlets so far, at least
+  `VILLAGE_CLEARANCE` (1200 blocks, a 4.5-minute walk) from every village where the coast allows it.
+  Same seed on the real-pack rig: hamlets in every part of the continent, 1912-5624 blocks from the
+  nearest village; the search took 163 s. Spacing by distance along the coast was tried first and
+  gave a fjord-cut peninsula three of the eight.
+- Without Terra Continental's plan (older Continental, the planner off, the dev harness) the old
+  coastline trace still runs.
+
 ## 0.5.9 — 2026-10-31
 - **No lava in hamlets**: a hamlet settling on its site now skips spots with surface lava within its
   layout radius + 8, and any lava still at the surface inside the hamlet is filled (dirt, grass on top),
