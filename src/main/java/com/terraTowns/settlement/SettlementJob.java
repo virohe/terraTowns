@@ -20,7 +20,7 @@ import java.util.Set;
  *       their buildings (Library, Temple, Fishery, Butcher's Shop, Loom Shed).</li>
  *   <li><b>Builder</b> — mason: Workshop.</li>
  *   <li><b>Guard</b> — Terra Towns' guard: Guard Post.</li>
- *   <li><b>Merchant</b> — the Merchant (0.6): Market Stall. No profession yet.</li>
+ *   <li><b>Merchant</b> — the Merchant (0.6, {@code merchant.Merchants}): Market Stall.</li>
  * </ul>
  *
  * <p><b>Why appointment rather than gating.</b> The obvious reading of "job unlocks after gym
@@ -47,9 +47,9 @@ public enum SettlementJob {
      */
     GUARD("guard", Set.of(BuildingCategory.BARRACKS_GUARD_POST)),
     /**
-     * Runs a Market Stall. Its villager, the Merchant, arrives in 0.6 (DESIGN.md §2.8); until
-     * then the job opens with the stall but nobody can hold it. Butchers, leatherworkers and
-     * cartographers held it until 0.5.5.
+     * Runs a Market Stall: Terra Towns' Merchant (0.6, DESIGN.md §2.8), handed a counter in a
+     * village like a Guard its post. Butchers, leatherworkers and cartographers held it until
+     * 0.5.5; from then until 0.6 it opened with the stall but nobody could hold it.
      */
     MERCHANT("merchant", Set.of(BuildingCategory.MARKET_STALL));
 
@@ -113,7 +113,7 @@ public enum SettlementJob {
         return false;
     }
 
-    /** @return true if some profession can hold this job (the Merchant can't until 0.6). */
+    /** @return true if some profession can hold this job. */
     public boolean isStaffable() {
         return !eligibleProfessions().isEmpty();
     }

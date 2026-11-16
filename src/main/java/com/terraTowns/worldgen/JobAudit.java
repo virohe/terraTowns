@@ -137,6 +137,8 @@ public final class JobAudit {
         }
 
         report.put("guard", guard(level, manager));
+        report.put("merchants", MerchantAudit.run(level, manager));
+        report.put("ranchers", RancherAudit.run(level, manager));
         manager.setDirty();
         report.put("settlements", rows);
         report.put("summary", verdict(rows));
@@ -646,12 +648,148 @@ public final class JobAudit {
                 && countKey(village, "promo.terra_towns.req.workers") == 0
                 && countKey(village, "promo.terra_towns.req.trades") == 0
                 && countKey(village, "promo.terra_towns.req.jobs") == 0;
+        playerBuildings(level, h, verdict);
         verdict.put("newBuildingsCountFromVillageTier", newCounted);
         verdict.put("townChecklistAsksWorkersAndNewBuildings", townAsks);
         verdict.put("villageChecklistAsksBuildingsOnly", villageAsks);
         out.put("villageChecklist", village.stream().map(r -> r.label().getString() + (r.met() ? " ✔" : " ✘")).toList());
         out.put("verdict", verdict);
         return out;
+    }
+
+    /**
+     * Buildings players put up register themselves (2026-11-05): "the buildings I'm building
+     * aren't being counted" (playtest) until each had a plaque. Rooms are built past the hamlet's
+     * footprint, where a player's next house goes, high above the hamlet so nothing else is hit.
+     */
+    private static void playerBuildings(ServerLevel level, SettlementData h, Map<String, Object> verdict) {
+        net.minecraft.world.level.levelgen.structure.BoundingBox footprintBefore = h.footprint();
+        java.util.UUID ownerBefore = h.ownerId();
+        // Just off the hamlet's ground, on whichever side of it is nearest the centre, so the
+        // rooms are within a plaque's reach (measured in three dimensions). A fixed side failed
+        // when a hamlet's ground reached past the reach on that side (hamlet layouts vary run to run).
+        int cx = h.center().getX();
+        int cz = h.center().getZ();
+        int y0 = h.center().getY() + 40;
+        int east = footprintBefore.maxX() + 8 - cx;
+        int west = cx - (footprintBefore.minX() - 8);
+        int south = footprintBefore.maxZ() + 8 - cz;
+        int north = cz - (footprintBefore.minZ() - 8);
+        int nearest = Math.min(Math.min(east, west), Math.min(south, north));
+        BlockPos a;
+        BlockPos along;
+        if (nearest == east) {
+            a = new BlockPos(cx + east, y0, cz - 3);
+            along = new BlockPos(0, 0, 10);
+        } else if (nearest == west) {
+            a = new BlockPos(cx - west - 6, y0, cz - 3);
+            along = new BlockPos(0, 0, 10);
+        } else if (nearest == south) {
+            a = new BlockPos(cx - 3, y0, cz + south);
+            along = new BlockPos(10, 0, 0);
+        } else {
+            a = new BlockPos(cx - 3, y0, cz - north - 6);
+            along = new BlockPos(10, 0, 0);
+        }
+        BlockPos b = a.offset(along);
+        BlockPos c = a.subtract(along);
+        for (BlockPos o : List.of(a, b, c)) {
+            shell(level, o, o.offset(6, 4, 6));
+        }
+        int structuresBefore = h.structures().size();
+        int smithiesBefore = h.buildingCount(BuildingCategory.SMITHY);
+        int newBefore = h.buildingsRegisteredSince(h.tier());
+
+        // A smithing table placed in a room: that room is a Smithy, no plaque, and its ground is
+        // the settlement's.
+        BlockPos table = a.offset(3, 1, 3);
+        boolean offGroundBefore = !h.covers(table);
+        level.setBlock(table, Blocks.SMITHING_TABLE.defaultBlockState(), 3);
+        com.terraTowns.structure.PlayerBuildings.onPlaced(level, table, null);
+        SettlementData.Structure smithy = h.structures().size() == structuresBefore + 1
+                ? h.structures().get(h.structures().size() - 1) : null;
+        boolean registers = smithy != null && smithy.playerBuilt() && smithy.type() == BuildingCategory.SMITHY
+                && smithy.counts() && h.buildingCount(BuildingCategory.SMITHY) == smithiesBefore + 1;
+        boolean groundGrows = offGroundBefore && h.covers(table);
+        boolean countsAsNew = h.buildingsRegisteredSince(h.tier()) == newBefore + 1;
+        // A second workstation in the same room is the same building.
+        level.setBlock(a.offset(5, 1, 5), Blocks.GRINDSTONE.defaultBlockState(), 3);
+        com.terraTowns.structure.PlayerBuildings.onPlaced(level, a.offset(5, 1, 5), null);
+        boolean oneBuilding = h.structures().size() == structuresBefore + 1;
+
+        // Three beds: Housing by default (an Inn only by the player's choice); a plaque hung
+        // inside starts on Housing, and a click moves it on to Inn.
+        for (int dx : new int[]{1, 3, 5}) {
+            bed(level, b.offset(dx, 1, 3));
+        }
+        com.terraTowns.structure.PlayerBuildings.onPlaced(level, b.offset(1, 1, 3), null);
+        SettlementData.Structure house = h.structures().get(h.structures().size() - 1);
+        boolean bedsAreHousing = house.playerBuilt() && house.type() == BuildingCategory.HOUSING && house.beds() == 3;
+        int housingBefore = h.buildingCount(BuildingCategory.HOUSING);
+        int innsBefore = h.buildingCount(BuildingCategory.INN_TAVERN);
+        BlockPos plaque = b.offset(1, 2, 5);
+        hang(level, TerraTownsRegistries.BUILDING_PLAQUE.get().defaultBlockState(), plaque, Direction.EAST);
+        BuildingDetection.classify(level, h, house);
+        boolean plaqueStartsOnDetected = h.plaqueAt(plaque) == BuildingCategory.HOUSING && house.plaqued()
+                && h.buildingCount(BuildingCategory.HOUSING) == housingBefore;
+        BuildingRegistry.refreshPlaque(level, plaque, null, true);
+        BuildingDetection.classify(level, h, house);
+        boolean plaqueChangesIt = h.plaqueAt(plaque) == BuildingCategory.INN_TAVERN
+                && h.buildingCount(BuildingCategory.INN_TAVERN) == innsBefore + 1
+                && h.buildingCount(BuildingCategory.HOUSING) == housingBefore - 1;
+        level.setBlock(plaque, Blocks.AIR.defaultBlockState(), 3);
+        h.removePlaque(plaque);
+
+        // A building already standing (built while nobody watched) is found when the desk opens.
+        bed(level, c.offset(3, 1, 3));
+        if (h.ownerId() == null) {
+            h.setOwnerId(java.util.UUID.randomUUID());
+        }
+        int sizeBefore = h.structures().size();
+        BuildingDetection.refreshAll(level, h);
+        boolean standingFound = h.structures().stream().skip(sizeBefore)
+                .anyMatch(st -> st.playerBuilt() && st.box().isInside(c.offset(3, 1, 3))
+                        && st.type() == BuildingCategory.HOUSING);
+
+        // Every building type has the two lines its plaque writes (the Housing plaque read
+        // "sign.terra_towns." in playtest).
+        net.minecraft.locale.Language lang = net.minecraft.locale.Language.getInstance();
+        List<String> unsigned = new ArrayList<>();
+        for (BuildingCategory cat : BuildingCategory.values()) {
+            String key = "sign.terra_towns.building." + cat.id();
+            if (!lang.has(key + ".1") || !lang.has(key + ".2")) {
+                unsigned.add(cat.id());
+            }
+        }
+
+        // Leave no trace.
+        h.structures().removeIf(SettlementData.Structure::playerBuilt);
+        h.restoreFootprint(footprintBefore);
+        h.setOwnerId(ownerBefore);
+        for (BlockPos o : List.of(a, b, c)) {
+            for (BlockPos p : BlockPos.betweenClosed(o, o.offset(6, 4, 6))) {
+                level.setBlock(p, Blocks.AIR.defaultBlockState(), 2 | 16);
+            }
+        }
+        verdict.put("placedWorkstationRegistersBuilding", registers);
+        verdict.put("playerBuildingGrowsSettlementGround", groundGrows);
+        verdict.put("playerBuildingCountsAsNew", countsAsNew);
+        verdict.put("secondWorkstationSameBuilding", oneBuilding);
+        verdict.put("playerBedsAreHousing", bedsAreHousing);
+        verdict.put("plaqueStartsOnDetectedType", plaqueStartsOnDetected);
+        verdict.put("plaqueClickChangesType", plaqueChangesIt);
+        verdict.put("standingBuildingFoundOnRefresh", standingFound);
+        verdict.put("everyBuildingTypeHasSignText", unsigned.isEmpty() ? (Object) Boolean.TRUE : "missing " + unsigned);
+    }
+
+    /** A bed with its foot at {@code foot}, head to the north. */
+    private static void bed(ServerLevel level, BlockPos foot) {
+        BlockState bed = Blocks.RED_BED.defaultBlockState()
+                .setValue(net.minecraft.world.level.block.HorizontalDirectionalBlock.FACING, Direction.NORTH);
+        level.setBlock(foot, bed.setValue(net.minecraft.world.level.block.BedBlock.PART,
+                net.minecraft.world.level.block.state.properties.BedPart.FOOT), 2);
+        level.setBlock(foot.north(), bed.setValue(net.minecraft.world.level.block.BedBlock.PART,
+                net.minecraft.world.level.block.state.properties.BedPart.HEAD), 2);
     }
 
     /** An air block inside {@code box} standing on something solid: somewhere to put a block. */
@@ -701,6 +839,7 @@ public final class JobAudit {
         }
         expected.put(VillagerProfession.MASON, SettlementJob.BUILDER);
         expected.put(TerraTownsRegistries.GUARD_PROFESSION.get(), SettlementJob.GUARD);
+        expected.put(TerraTownsRegistries.MERCHANT_PROFESSION.get(), SettlementJob.MERCHANT);
         List<String> wrong = new ArrayList<>();
         expected.forEach((p, job) -> {
             var a = com.terraTowns.settlement.ProfessionJobs.assignment(p);
@@ -714,7 +853,8 @@ public final class JobAudit {
                 com.terraTowns.settlement.ProfessionJobs.jobOf(VillagerProfession.NONE) == null
                         && com.terraTowns.settlement.ProfessionJobs.jobOf(VillagerProfession.NITWIT) == null
                         && com.terraTowns.settlement.ProfessionJobs.jobOf(TerraTownsRegistries.GYM_LEADER_PROFESSION.get()) == null);
-        verdict.put("merchantAwaitsItsVillager", !SettlementJob.MERCHANT.isStaffable());
+        // The Merchant arrived in 0.6; until then the job opened but nobody could hold it.
+        verdict.put("merchantStaffable", SettlementJob.MERCHANT.isStaffable());
         out.put("verdict", verdict);
         return out;
     }
@@ -1035,12 +1175,26 @@ public final class JobAudit {
         SettlementData home = settlements.stream().filter(s -> s.spawnPoint() != null).findFirst().orElse(null);
         boolean credited = false, requirementShown = false, requirementMet = false;
         boolean awayToday = false, backTomorrow = false, notPostedWhileAway = false;
+        boolean staysAfterDefeat = false;
         if (home != null) {
             boolean requirementBefore = rivalRequirementMet(level, home);
             RivalEntity rival = RivalPosting.post(level, pool, home, ghost, "harness");
-            SettlementData got = RivalPosting.defeated(level, ghost);
+            SettlementData got;
             if (rival != null) {
+                // A playtest rival had claimed a job and vanished with it when beaten
+                // (2026-11-05): the beaten rival must stay, as a resident, job and all.
+                rival.setVillagerData(rival.getVillagerData().setProfession(VillagerProfession.FARMER));
+                got = RivalPosting.defeated(level, rival, ghost);
+                staysAfterDefeat = rival.isAlive() && !rival.isRemoved()
+                        && rival.getVillagerData().getProfession() == VillagerProfession.FARMER
+                        && com.terraTowns.settlement.SettlementPromotion.isResident(rival)
+                        && !rival.isCustomNameVisible()
+                        // Named as a plain villager, not "Rival Trainer" (Jade, playtest).
+                        && rival.getDisplayName().getString().equals("Farmer")
+                        && !RivalPosting.rivalPresent(level, home, ghost);
                 rival.discard();
+            } else {
+                got = RivalPosting.defeated(level, ghost);
             }
             long now = level.getGameTime();
             credited = got == home && home.rivalBeatenThisTier();
@@ -1059,6 +1213,7 @@ public final class JobAudit {
         verdict.put("promotionRivalRequirementFlipsOnWin", requirementMet);
         verdict.put("rivalAwayForTheDay", awayToday && notPostedWhileAway);
         verdict.put("rivalBackNextDay", backTomorrow);
+        verdict.put("beatenRivalStaysAsResident", staysAfterDefeat);
         verdict.put("postedStandingNearSpawn", postedWell + " / " + attempted);
         verdict.put("growsWithInfluence", rankByBreadth.size() > 1
                 && rankByBreadth.get(rankByBreadth.size() - 1) > rankByBreadth.get(0));

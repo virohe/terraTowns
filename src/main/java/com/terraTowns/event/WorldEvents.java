@@ -58,6 +58,7 @@ public final class WorldEvents {
     public static void onServerStarted(ServerStartedEvent event) {
         MinecraftServer server = event.getServer();
         ServerLevel level = server.overworld();
+        com.terraTowns.worldgen.HamletChunkPrefetch.reset();
         // Which job each profession belongs to: tags, else a guess (0.5.5). Before anything
         // staffs a job or counts workers.
         com.terraTowns.settlement.ProfessionJobs.classifyAll(level);
@@ -82,23 +83,48 @@ public final class WorldEvents {
             return;
         }
         if (!manager.pendingHamlets().isEmpty()) {
+            // A first load that stopped part-way (game closed, crash). Carry on with the saved
+            // sites; never search again, and never rebuild a hamlet already built.
             TerraTowns.LOGGER.info("[boot] resuming {} unbuilt spawn hamlets", manager.pendingHamlets().size());
-            return; // onServerTick carries on building them
+            if (!server.isDedicatedServer() || JobAudit.ENABLED) {
+                buildPendingNow(server, level, manager);
+            }
+            return; // dedicated: onServerTick carries on building them
         }
 
+        if (!server.isRunning()) {
+            // Already stopping: the loading screen's "Try a New Seed" is throwing this world away.
+            return;
+        }
         long findStart = System.nanoTime();
         com.terraTowns.integration.LoadingMapHook.message("Looking for a sheltered coast for the starting hamlets");
         List<BlockPos> sites = CoastalSpawnFinder.findCandidates(
                 level, CANDIDATE_COUNT, CANDIDATE_SPACING, CANDIDATE_ANCHOR_RADIUS);
         long findMs = (System.nanoTime() - findStart) / 1_000_000L;
+        if (!server.isRunning()) {
+            // Stopped part-way for a new seed: the search gave up early, so record nothing.
+            TerraTowns.LOGGER.info("[boot] server stopping; spawn-hamlet search abandoned");
+            return;
+        }
+        warnAboutSites(sites);
 
         if (sites.isEmpty()) {
-            // Leave the flag unset so a later start can retry once worldgen settings change.
-            TerraTowns.LOGGER.warn("No spawn-hamlet sites found; will retry next start");
+            // Even the relaxed checks found nothing. Settle it anyway: the search is deterministic,
+            // so a retry on the next start would only repeat the same long, failing search on
+            // every load (the user, 2026-11-05). The op notice reports 0 of N; players spawn at
+            // the world spawn.
+            TerraTowns.LOGGER.error("No spawn-hamlet site found even with relaxed checks; this world has no starting hamlets");
+            manager.recordHamletCounts(CANDIDATE_COUNT, 0);
+            finishSpawnHamlets(server, manager);
             return;
         }
         TerraTowns.LOGGER.info("[boot] found {} spawn-hamlet sites in {} ms", sites.size(), findMs);
         manager.recordHamletCounts(CANDIDATE_COUNT, sites.size());
+
+        // Save the sites before building anything: a load cut short from here on resumes with
+        // the building instead of searching again (the user, 2026-11-05).
+        manager.setPendingHamlets(sites);
+        checkpoint(level, false);
 
         // (The dev job harness is the exception: it stages every hamlet's villagers in one pass
         // right after the build, which needs them all still loaded - so it builds in one go.)
@@ -108,20 +134,70 @@ public final class WorldEvents {
             // dedicated server's watchdog kills any single tick over max-tick-time (60 s) — which
             // all eight at once exceeded once the spawn continent stopped being frozen and every
             // site qualified; the site search alone can take a good part of that tick.
-            manager.setPendingHamlets(sites);
-        } else {
-            // Single player: this is still the loading screen, the best place for the wait.
-            int n = 0;
-            com.terraTowns.integration.LoadingMapHook.clearProbe();
-            for (BlockPos site : sites) {
-                com.terraTowns.integration.LoadingMapHook.message("Building hamlet " + (n + 1) + " of " + sites.size());
-                com.terraTowns.integration.LoadingMapHook.probe(site.getX(), site.getZ());
-                buildNext(server, level, manager, site, ++n);
-            }
-            com.terraTowns.integration.LoadingMapHook.clearProbe();
-            com.terraTowns.integration.LoadingMapHook.message("Hamlets built. Taking you to the first one");
-            finishSpawnHamlets(server, manager);
+            return;
         }
+        // Single player: this is still the loading screen, the best place for the wait.
+        buildPendingNow(server, level, manager);
+    }
+
+    /**
+     * Tell the loading screen when the starting hamlets came out poorly, before minutes go into
+     * building them, so the player can try a new seed (the user, 2026-11-10: hamlets in tight pairs
+     * along half the coast).
+     */
+    private static void warnAboutSites(List<BlockPos> sites) {
+        if (sites.size() < CANDIDATE_COUNT) {
+            com.terraTowns.integration.LoadingMapHook.warn(
+                    "Only " + sites.size() + " out of " + CANDIDATE_COUNT + " hamlets could be placed");
+        }
+        if (CoastalSpawnFinder.lastSpacingProblem() != null) {
+            com.terraTowns.integration.LoadingMapHook.warn("Hamlet placement appears to be non-optimal");
+        }
+    }
+
+    /** Build every queued starting hamlet in one go (single player: the loading screen). */
+    private static void buildPendingNow(MinecraftServer server, ServerLevel level, SettlementManager manager) {
+        int total = manager.spawnHamletCount() + manager.pendingHamlets().size();
+        com.terraTowns.integration.LoadingMapHook.clearProbe();
+        while (!manager.pendingHamlets().isEmpty()) {
+            if (!server.isRunning()) {
+                // "Try a New Seed": the world is being thrown away; don't build the rest.
+                TerraTowns.LOGGER.info("[boot] server stopping; {} spawn hamlets left unbuilt", manager.pendingHamlets().size());
+                com.terraTowns.worldgen.HamletChunkPrefetch.releaseAll(level);
+                return;
+            }
+            BlockPos site = manager.takePendingHamlet();
+            int n = manager.spawnHamletCount() + 1;
+            com.terraTowns.integration.LoadingMapHook.message("Building hamlet " + n + " of " + total);
+            com.terraTowns.integration.LoadingMapHook.building(site.getX(), site.getZ());
+            buildNext(server, level, manager, site, n);
+            com.terraTowns.integration.LoadingMapHook.built(site.getX(), site.getZ());
+        }
+        com.terraTowns.integration.LoadingMapHook.clearProbe();
+        com.terraTowns.integration.LoadingMapHook.message("Hamlets built. Taking you to the first one");
+        finishSpawnHamlets(server, manager);
+    }
+
+    /**
+     * Write the settlement data to disk now, and with {@code chunks} the world's changed chunks
+     * too. The world otherwise saves only on autosave or quit, but the chunks of a finished hamlet
+     * reach disk as soon as they unload, while the next one builds. A load cut short then left
+     * hamlets on disk that the saved data didn't know about, and the next start built them again
+     * on top (the user, 2026-11-05: two wells and two sets of houses on one site).
+     */
+    private static void checkpoint(ServerLevel level, boolean chunks) {
+        long start = System.nanoTime();
+        if (chunks) {
+            // Not save(true): a flushing save also unloads every chunk waiting to unload, which
+            // pulled the built hamlets out from under the dev job audit (harness, 2026-11-05).
+            // Queue the writes, then wait for them, so the chunks are on disk before the data
+            // that says the hamlet exists.
+            level.getChunkSource().save(false);
+            level.getChunkSource().chunkMap.flushWorker();
+        }
+        level.getDataStorage().save();
+        TerraTowns.LOGGER.info("[boot] checkpoint saved{} in {} ms", chunks ? " with chunks" : "",
+                (System.nanoTime() - start) / 1_000_000L);
     }
 
     /** Build one queued starting hamlet per server tick until the queue is empty. */
@@ -142,8 +218,15 @@ public final class WorldEvents {
 
     private static void buildNext(MinecraftServer server, ServerLevel level, SettlementManager manager,
                                   BlockPos site, int number) {
+        // The site is already off the queue; saving that first means a load cut short in the
+        // middle of this build skips the site next time rather than building over a half-made
+        // hamlet. One lost hamlet beats two on one spot.
+        checkpoint(level, false);
         long start = System.nanoTime();
+        // This site's chunks and the next ones' generate in parallel from here on.
+        com.terraTowns.worldgen.HamletChunkPrefetch.ahead(level, site, manager.pendingHamlets());
         HamletPiece.Built built = HamletPiece.place(level, site);
+        com.terraTowns.worldgen.HamletChunkPrefetch.release(level, site);
         BlockPos spawn = built.spawn();
         com.terraTowns.settlement.SettlementData hamlet = manager.addSpawnHamlet(site, null, spawn, "Hamlet " + number);
         hamlet.setFootprint(built.bounds());
@@ -154,10 +237,15 @@ public final class WorldEvents {
             level.setDefaultSpawnPos(spawn, 0.0f);
         }
         TerraTowns.LOGGER.info("[boot] built spawn hamlet {} in {} ms", number, (System.nanoTime() - start) / 1_000_000L);
+        checkpoint(level, true);
     }
 
     private static void finishSpawnHamlets(MinecraftServer server, SettlementManager manager) {
+        // What was actually built (a site skipped after a cut-short load counts as missing).
+        manager.recordHamletCounts(manager.hamletTarget(), manager.spawnHamletCount());
         manager.markSpawnHamletsPlaced();
+        com.terraTowns.worldgen.HamletChunkPrefetch.releaseAll(server.overworld());
+        checkpoint(server.overworld(), false);
         TerraTowns.LOGGER.info("[boot] all {} spawn hamlets built", manager.spawnHamletCount());
         // Dev-only: inert unless -Dterratowns.hamletAudit=<path> was passed. See HamletAudit.
         HamletAudit.finish(server);

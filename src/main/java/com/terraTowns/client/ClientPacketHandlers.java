@@ -80,4 +80,9 @@ public final class ClientPacketHandlers {
         Component message = Component.translatable("toast.terra_towns.promotion_ready.desc");
         SystemToast.add(mc.getToasts(), SystemToast.SystemToastId.PERIODIC_NOTIFICATION, title, message);
     }
+
+    /** A merchant's stall figures (0.6): the stall screen, or the trade screen's emeralds section. */
+    public static void handleMerchantInfo(com.terraTowns.network.MerchantInfoPacket packet) {
+        MerchantClient.handleInfo(packet);
+    }
 }

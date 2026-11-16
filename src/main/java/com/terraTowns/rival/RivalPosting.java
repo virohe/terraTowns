@@ -130,9 +130,21 @@ public final class RivalPosting {
     }
 
     /**
+     * The player beat this rival: {@link #defeated(ServerLevel, UUID)}, and the rival settles
+     * down where it stands ({@link RivalEntity#retire}) instead of vanishing with any job it
+     * had claimed (user, 2026-11-05).
+     */
+    @Nullable
+    public static SettlementData defeated(ServerLevel level, RivalEntity rival, UUID playerId) {
+        SettlementData credited = defeated(level, playerId);
+        rival.retire();
+        return credited;
+    }
+
+    /**
      * The player beat their rival. Records the win (rank goes up, the one-day cooldown starts),
      * credits the settlement it was posted to toward that settlement's next promotion, and
-     * un-posts it. The caller removes the entity.
+     * un-posts it.
      *
      * @return the settlement credited, or null if the rival wasn't posted anywhere known.
      */

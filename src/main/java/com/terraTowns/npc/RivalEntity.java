@@ -1,6 +1,12 @@
 package com.terraTowns.npc;
 
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.network.chat.Component;
+import net.minecraft.network.syncher.EntityDataAccessor;
+import net.minecraft.network.syncher.EntityDataSerializers;
+import net.minecraft.network.syncher.SynchedEntityData;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.npc.Villager;
 import net.minecraft.world.level.Level;
@@ -27,6 +33,10 @@ public class RivalEntity extends Villager {
     private static final String TAG_OWNER = "TerraTownsRivalOwner";
     private static final String TAG_RIVAL_ID = "TerraTownsRivalId";
     private static final String TAG_RANK = "TerraTownsRivalRank";
+    private static final String TAG_RETIRED = "TerraTownsRivalRetired";
+    /** Synced: the client names a retired rival as a plain villager (Jade and the like read it). */
+    private static final EntityDataAccessor<Boolean> DATA_RETIRED =
+            SynchedEntityData.defineId(RivalEntity.class, EntityDataSerializers.BOOLEAN);
 
     /** The player this rival belongs to. Null on a creative-spawned egg until assigned. */
     @Nullable
@@ -36,6 +46,11 @@ public class RivalEntity extends Villager {
     private UUID rivalId;
     /** Rank this rival was posted at, refreshed on each posting. */
     private int rank = 1;
+    /**
+     * Beaten and settled down: an ordinary villager from then on, in the village it was beaten
+     * in. A playtest rival had taken a job there, and vanishing on defeat took the job with it
+     * (user, 2026-11-05). Kept in {@link #DATA_RETIRED}.
+     */
 
     public RivalEntity(EntityType<? extends Villager> entityType, Level level) {
         super(entityType, level);
@@ -62,9 +77,45 @@ public class RivalEntity extends Villager {
         this.rank = rank;
     }
 
-    /** @return true if this rival belongs to {@code playerId}. */
+    /** @return true if this rival belongs to {@code playerId} and is still their rival. */
     public boolean belongsTo(UUID playerId) {
-        return ownerId != null && ownerId.equals(playerId);
+        return !retired() && ownerId != null && ownerId.equals(playerId);
+    }
+
+    public boolean retired() {
+        return entityData.get(DATA_RETIRED);
+    }
+
+    @Override
+    protected void defineSynchedData(SynchedEntityData.Builder builder) {
+        super.defineSynchedData(builder);
+        builder.define(DATA_RETIRED, false);
+    }
+
+    /**
+     * A retired rival is named as any villager is ("Villager", "Farmer"): under its own entity
+     * type it read "Rival Trainer" in Jade, and a player took it for a rival that wouldn't fight
+     * (playtest, 2026-11-05).
+     */
+    @Override
+    protected Component getTypeName() {
+        if (!retired()) {
+            return super.getTypeName();
+        }
+        ResourceLocation prof = BuiltInRegistries.VILLAGER_PROFESSION.getKey(getVillagerData().getProfession());
+        return Component.translatable(EntityType.VILLAGER.getDescriptionId() + '.'
+                + (!"minecraft".equals(prof.getNamespace()) ? prof.getNamespace() + '.' : "") + prof.getPath());
+    }
+
+    /**
+     * Beaten: stays where it is as a villager of the settlement, keeping its job and trades,
+     * and stops being anyone's rival. The rivalry itself lives in {@code RivalPool}, so the
+     * player's next rival is a fresh posting at the higher rank.
+     */
+    public void retire() {
+        entityData.set(DATA_RETIRED, true);
+        setCustomName(null);
+        setCustomNameVisible(false);
     }
 
     @Override
@@ -77,6 +128,7 @@ public class RivalEntity extends Villager {
             tag.putUUID(TAG_RIVAL_ID, rivalId);
         }
         tag.putInt(TAG_RANK, rank);
+        tag.putBoolean(TAG_RETIRED, retired());
     }
 
     @Override
@@ -91,5 +143,6 @@ public class RivalEntity extends Villager {
         if (tag.contains(TAG_RANK)) {
             rank = tag.getInt(TAG_RANK);
         }
+        entityData.set(DATA_RETIRED, tag.getBoolean(TAG_RETIRED));
     }
 }

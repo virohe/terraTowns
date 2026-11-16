@@ -32,7 +32,7 @@ import java.util.function.Supplier;
  *
  * <p><b>The rule</b> (playtest request, 2026-09-26): a plaque can only name a building type the
  * building has the workstation for: a Smithy any smith's workstation (smithing table, blast
- * furnace, grindstone, fletching table, cauldron), Farms a composter or beehive, and so on
+ * furnace, grindstone, fletching table, cauldron), Farms a composter, beehive or manger, and so on
  * ({@link #WORKSTATIONS}, {@link #ANCHORS}; 0.5.4). A room with a loom and a smithing table offers
  * exactly Smithy and Loom Shed. Detection of generated buildings reads the same table.</p>
  *
@@ -117,13 +117,53 @@ public final class BuildingSurvey {
     }
 
     /**
+     * Survey again from an open cell an earlier survey started at: its room, or the outdoor
+     * survey round it. Null if the cell has been built over.
+     */
+    @javax.annotation.Nullable
+    public static Result from(ServerLevel level, BlockPos start) {
+        BlockState state = level.getBlockState(start);
+        if (!state.getCollisionShape(level, start).isEmpty() || !state.getFluidState().isEmpty()) {
+            return null;
+        }
+        Result room = flood(level, start, null, true, ROOM_REACH_XZ, ROOM_REACH_Y);
+        return room != null ? room : flood(level, start, null, false, OPEN_AIR_RADIUS, OPEN_AIR_RADIUS);
+    }
+
+    /**
+     * Survey the building a workstation or bed at {@code block} stands in, with no plaque to
+     * start from (2026-11-05): the room next to it, if any side opens onto one, else the outdoor
+     * survey around it. Sides are tried level first, then above, so a table against a wall
+     * finds its own room rather than the space over the wall's top.
+     */
+    public static Result around(ServerLevel level, BlockPos block) {
+        BlockPos firstOpen = null;
+        for (Direction d : new Direction[]{Direction.NORTH, Direction.SOUTH, Direction.EAST, Direction.WEST, Direction.UP}) {
+            BlockPos next = block.relative(d);
+            BlockState state = level.getBlockState(next);
+            if (!state.getCollisionShape(level, next).isEmpty() || !state.getFluidState().isEmpty()) {
+                continue;
+            }
+            if (firstOpen == null) {
+                firstOpen = next;
+            }
+            // No plaque here: the workstation itself is one of the room's blocks.
+            Result room = flood(level, next, null, true, ROOM_REACH_XZ, ROOM_REACH_Y);
+            if (room != null) {
+                return room;
+            }
+        }
+        return flood(level, firstOpen != null ? firstOpen : block.above(), null, false, OPEN_AIR_RADIUS, OPEN_AIR_RADIUS);
+    }
+
+    /**
      * Flood the open space from {@code start}, collecting it and every block bounding it.
      *
      * @param enclosed true: a room — null if it reaches the sky or outgrows the reach limits.
      *                 false: outdoors — the sky is fine, and the reach limit just bounds the flood.
      */
     @javax.annotation.Nullable
-    private static Result flood(ServerLevel level, BlockPos start, BlockPos plaque, boolean enclosed,
+    private static Result flood(ServerLevel level, BlockPos start, @javax.annotation.Nullable BlockPos plaque, boolean enclosed,
                                 int reachXZ, int reachY) {
         Set<BlockPos> seen = new HashSet<>();
         Set<BlockPos> boundary = new HashSet<>();
@@ -179,7 +219,8 @@ public final class BuildingSurvey {
      * table, so a fisherman's barrel made Farm Plots and a butcher's smoker a Market Stall.
      */
     private static final Map<BuildingCategory, Supplier<List<VillagerProfession>>> WORKSTATIONS = Map.of(
-            BuildingCategory.FARM_PLOTS, () -> List.of(VillagerProfession.FARMER),
+            BuildingCategory.FARM_PLOTS, () -> List.of(VillagerProfession.FARMER,
+                    TerraTownsRegistries.RANCHER_PROFESSION.get()),
             BuildingCategory.SMITHY, () -> List.of(VillagerProfession.TOOLSMITH, VillagerProfession.WEAPONSMITH,
                     VillagerProfession.ARMORER, VillagerProfession.FLETCHER, VillagerProfession.LEATHERWORKER),
             BuildingCategory.LIBRARY, () -> List.of(VillagerProfession.LIBRARIAN, VillagerProfession.CARTOGRAPHER),

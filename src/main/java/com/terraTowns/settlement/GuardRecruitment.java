@@ -30,6 +30,20 @@ public final class GuardRecruitment {
 
     /** @return how many villagers became Guards this call. */
     public static int recruit(ServerLevel level, SettlementData settlement) {
+        return handOut(level, settlement, TerraTownsRegistries.GUARD_POST_POI_KEY,
+                TerraTownsRegistries.GUARD_PROFESSION.get());
+    }
+
+    /**
+     * Hand every free workstation of {@code poi} inside a village-or-larger settlement to an
+     * unemployed resident, making it a {@code profession}. Guards' posts and, since 0.6, Merchants'
+     * counters go out this way.
+     *
+     * @return how many villagers took up the profession this call
+     */
+    public static int handOut(ServerLevel level, SettlementData settlement,
+                              net.minecraft.resources.ResourceKey<net.minecraft.world.entity.ai.village.poi.PoiType> poi,
+                              VillagerProfession profession) {
         if (settlement.tier().ordinal() < SettlementTier.VILLAGE.ordinal()) {
             return 0;
         }
@@ -46,13 +60,13 @@ public final class GuardRecruitment {
             }
             // Nearest free post to this villager, but only posts inside the settlement.
             Optional<BlockPos> post = pois.take(
-                    holder -> holder.is(TerraTownsRegistries.GUARD_POST_POI_KEY),
+                    holder -> holder.is(poi),
                     (holder, pos) -> pos.closerThan(center, r),
                     v.blockPosition(), (int) Math.ceil(2 * r));
             if (post.isEmpty()) {
                 break; // every post is taken
             }
-            v.setVillagerData(v.getVillagerData().setProfession(TerraTownsRegistries.GUARD_PROFESSION.get()));
+            v.setVillagerData(v.getVillagerData().setProfession(profession));
             v.refreshBrain(level);
             v.getBrain().setMemory(MemoryModuleType.JOB_SITE, GlobalPos.of(level.dimension(), post.get()));
             recruited++;

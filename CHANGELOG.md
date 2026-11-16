@@ -5,6 +5,185 @@ Entries before 0.4.8 were reconstructed on 2026-09-27 from DESIGN.md and session
 project had no version control until then. Snapshots of 0.3.13 (partial) and 0.4.0+ are in
 `releases/terra-towns/`.
 
+## 0.6.0 — 2026-11-15
+- **Hamlet pieces on slopes are banked in** (playtest, 2026-11-10). A piece is lifted to its door's
+  level, so on a slope its low side stood a block above the grass, and the template's bottom
+  layer (ground, meant to sit level with the grass) showed as a band of bare dirt under the walls
+  and lone dirt blocks beside them. The ground round each piece is now raised to meet it (never
+  above the ground at its door), stepping down a block per block outward, capped with the
+  column's own surface. Harness: `exposedBaseDirt` (123 before, gated at 0).
+- **The Rancher and the Manger** (TT-218). The Manger (an anvil to look at until its own model
+  exists; planks round a hay bale to craft) is the Rancher's workstation, and makes an animal pen a
+  Farm. Ranchers are in the Farmer group.
+  - Villagers walk through fence gates while the gates stay closed (user, 2026-11-09), so no animal
+    follows them out: their pathfinding sees a closed gate as a door and they have no collision with
+    one. Clients draw the gate open, with its sounds, while a villager is in it. Players and animals
+    still can't pass. Ranchers and unemployed adults pass (an unemployed one walks to a manger
+    inside a pen and takes the job the vanilla way); other villagers and children don't, after
+    the pens became the village's shortcuts (playtest, 2026-11-10).
+  - At work a Rancher stays in its pen: it passes a gate only on its way to its manger, a walk out
+    is turned back, and its animals can't jostle it out. Now and then it goes over to one of the
+    animals by its manger and looks it over. Mornings, evenings, the afternoon gathering and
+    night are its own. Villagers walk through a gate as through a door
+    instead of hopping (vanilla jumps in any tall block that isn't a door or fence), and the gate is
+    drawn open only while a villager stands in it, shutting half a second after it steps out
+    (playtest, 2026-11-10).
+  - **Every village pen has a manger** (the user's layouts, 2026-11-09): vanilla's plains, desert,
+    savanna, snowy and taiga pens and stables (zombie villages' too), and BWG's Salem and Skyris
+    pens. Each is the original template with only the manger added where the user put it.
+    Terra Towns now loads after BWG (optional dependency) so its versions win.
+  - Provisional trades: buys wheat, hay bales and golden carrots; sells eggs, leather, leads,
+    milk, saddles, name tags and iron horse armour. They also set those goods' levels for the
+    Merchant.
+  - Harness: a `ranchers` section (10 checks), including a real pen where the Rancher's path runs
+    through the gate (and any villager's), an unemployed villager outside reaches a manger inside,
+    the Rancher walks through the closed gate and a cow is stopped by it, and every pen loads with
+    its manger (`everyPenHasAManger`).
+- **Merchant levels and the stall at its counter** (user, 2026-11-05 playtest).
+  - A merchant levels up from players' purchases like any villager, up to Apprentice in a
+    village, Expert in a town and Master in a city. It sells only goods of its level or below (a
+    Novice sells what Novice workers sell: bread yes, cookies not until Journeyman), takes in
+    nothing above its level (that stays with the worker), and has two slots for goods on sale per
+    level. Purchases give the XP vanilla gives for goods of that level.
+  - The stall screen opens only by right-clicking the merchant's Market Counter, for the
+    settlement's holder. It is now the size of a villager's trade screen, closes with the
+    inventory key, and shows the merchant's level and slots.
+  - The merchant's trade screen is any villager's, with the emeralds made in its top-right corner
+    for the settlement's holder; the side panel with Take and Stall buttons is gone (emeralds are
+    taken at the counter). Sneak-right-clicking the merchant no longer opens the stall.
+  - A merchant keeps within 6 blocks of its counter through the day, except at night and at the
+    afternoon gathering.
+  - The stall screen is laid out as a villager's trade screen: the merchant's trades on the left
+    exactly as buyers see them (redrawn as soon as a price or what's on sale changes; goods kept
+    back or waiting for its level follow, dimmed), and on the right the emeralds, level and slots,
+    and the picked goods' price and on-sale switch.
+  - The stall works in slots (2026-11-05 playtest): each line on the left is one of the
+    merchant's slots, Selling the goods in it (or an empty slot). Clicking a slot again opens a
+    picker over the screen with every good the merchant can sell: a search box, a filter by
+    category (Farming, Food, Armor, Weapons, Tools, Materials, Blocks, Other, from item tags) or
+    by creative tab, and sorting by stock, name, price or newest. "Not Selling" empties the slot;
+    Back (or Escape) leaves the picker without changing anything.
+    Randomize fills the empty slots with random goods in stock; Shift-click rerolls every slot.
+    Shift-click on - or + moves a price 5 steps. Goods above the merchant's level no longer appear
+    at all. The merchant's trades follow its slot order; a sold-out slot shows vanilla's crossed
+    arrow.
+  - Harness: 18 more merchant checks (62).
+- **A beaten rival is named as a villager** ("Farmer", "Villager"), not "Rival Trainer": in Jade it
+  read as a rival that wouldn't fight (playtest). Harness: part of `beatenRivalStaysAsResident`.
+- **Your buildings register themselves** (user, 2026-11-05). Placing a workstation or a bed in a
+  settlement surveys the room it stands in (the survey a plaque makes) and records it as one of
+  the settlement's buildings, typed as generated ones are: its workstation decides, beds alone
+  make Housing. Until now a player's building counted only once a plaque was hung in it ("the
+  buildings I'm building aren't being counted"). A plaque is now how you disagree: it starts on the
+  detected type and a right-click moves it on (a 3-bed house used to come up as an Inn first; an
+  Inn is now only ever your choice). Buildings already standing are found when the desk opens or
+  a gym is challenged. A player's building also grows the settlement's ground to cover it, since
+  beds and villagers only count there; a house built past a hamlet's edge never counted its beds.
+  Detected buildings count toward a village's "new buildings".
+- **Plaque signs** for Housing, Storage Center, Library, Temple, Fishery, Workshop, Butcher's Shop
+  and Loom Shed read their names instead of "sign.terra_towns.".
+- **A beaten rival stays** (user, 2026-11-05). It used to vanish when beaten, taking any job it had
+  claimed with it (a playtest rival had taken one). It now settles down where it stands as an
+  ordinary villager of that settlement, keeping its job and trades, and counts toward population;
+  your next rival is posted fresh after the day away, at the higher rank, as before. Harness:
+  `beatenRivalStaysAsResident`.
+- **Merchants** (0.6, the user's design of 2026-10-16, DESIGN.md §2.8). A Merchant is a villager
+  profession of its own, worked at the Market Counter. It makes nothing: it sells what the village's
+  workers make.
+  - **Who becomes one**: like Guards, merchants are handed out. Each settlement scan gives every free
+    counter in a village (or larger) to an unemployed resident; no villager claims a counter by
+    itself, and a counter in a hamlet makes no merchant. The Merchant job can now be staffed.
+  - **Stock**: when a worker restocks, what players didn't buy of its previous stock goes to the
+    settlement's merchants (a farmer with 8 bread who sold 2 sends 6). A merchant holds up to 8
+    restocks per worker and item (three farmers restocking 8 bread each: 192). Vanilla only restocks
+    a villager someone bought from, so a worker nobody traded with hands over its whole stock once a
+    day instead; otherwise a stall in a village you never trade in would stay empty. Only goods sold
+    for emeralds alone count, and never Cobblemon's items (those are the Pokémart's).
+  - **Prices**: by default, the highest price any worker asks plus 10%, rounded up against the buyer
+    (5 emeralds becomes 6, 1 becomes 2, an emerald for 6 bread becomes an emerald for 5). The owner
+    can lower a price, step by step, but not below the cheapest worker's.
+  - **Its trades are its stock**: right-clicking a merchant shows one trade per item it sells, as
+    many times as its stock allows. Reputation discounts don't apply; the owner sets the price.
+  - **Emeralds made**: what a merchant takes in collects in an "emeralds made" section beside its
+    trades (for its owner), and the owner moves them into their inventory with **Take**. The owner's
+    own purchases from their merchant make no emeralds (they would come straight back, making the
+    stall's goods free to them).
+  - **The stall screen**: the owner sneak-right-clicks their merchant (or clicks **Stall...** beside
+    its trades, or right-clicks it while it has nothing to sell) to see every item it has had, how
+    many it holds, which it sells (new goods are sold until you keep them back), and its prices, with
+    cheaper / dearer / reset buttons.
+  - **Passive sales**: merchants also sell to the village's other villagers, one lot every two
+    minutes at best (fewer in villages under 10 villagers, caught up for a day after you were away),
+    so a stall always earns something; this uses stock up.
+  - **Who trades with whom**: in a settlement someone holds, a player without influence there trades
+    only with its merchants; its workers turn them away. Settlements nobody holds yet trade as before.
+- **Fix: a hamlet whose well landed away from its site wasn't on its own ground.** A spawn
+  hamlet's centre was the site the finder chose, but the hamlet is built round its well, which can
+  land 20 or more blocks away (a dry column, off lava, the flattest patch); past the footprint's
+  margin, its own centre was outside the hamlet, and anything that finds "the settlement here" by
+  position (building detection, the job scans, the merchant rules) found nothing there. In the harness
+  world one hamlet in eight, 50 blocks out. Such a hamlet now centres on its well, and saved worlds are
+  repaired as they load. Harness: `everyCentreOnItsOwnGround`, failing before.
+- Tests: the harness's new `merchants` section (44 checks) covers the
+  price rule on the user's examples, recruitment in a village but not a hamlet, overstock (unsold
+  goods only, the 8-restock cap, the daily hand-over without double counting, vanilla's restock through
+  the mixin), trades through vanilla's own `notifyTrade`, taking emeralds, kept goods, passive sales,
+  who may trade with whom, and the stock surviving a save. `runRenderCheck` now also screenshots a
+  merchant's trades with the emeralds section and its stall screen.
+- **Starting hamlets build 2.4x faster** (the user, 2026-11-10: "feels like a place that could use
+  a lot of optimization"). A build was almost all waiting for chunks: ~210 chunks round each site,
+  generated one blocking `getChunk` at a time on the server thread while the chunk workers idled.
+  Now `HamletChunkPrefetch` tickets each site's chunks (17x17) and the next two sites' before the
+  build, so they generate in parallel, and frees them once it's built. One full-status ticket per
+  chunk, so prefetched land doesn't tick. Real-pack rig, same seed, 8 hamlets: 491 s -> 202 s
+  (about 61 s -> 25 s each once primed); what's left is the pack's chunk generation rate, ~11/s.
+  With chunks generating in parallel, a site's exact plot can move by up to ~20 blocks from run to
+  run on the same seed (terrain details depend on chunk order); houses, farms and villagers matched
+  in all three rig runs.
+- **Hamlet warnings on the loading map** (the user, 2026-11-10), posted after the search and
+  before the hamlets are built, so a player can try a new seed without waiting for the builds:
+  "Only N out of 8 hamlets could be placed", and "Hamlet placement appears to be non-optimal" when
+  the longest stretch of the planned coast with no hamlet is over 2.5x the even share, or two
+  hamlets are closer than a quarter of the even spacing (at most 1500 blocks) in a straight line (the user's world: pairs
+  742 and 813 blocks apart, none on the west coast). Logged as `Hamlet spread: ...`. Needs Terra
+  Continental's warning line (0.11.1+); older ones only log it.
+- **The search and the builds stop when the server stops** (Terra Continental's "Try a New
+  Seed"): nothing qualifies once `isRunning()` is false, so every search loop runs out at once.
+  Nothing is recorded, and hamlets not yet built are skipped.
+- **The starting-hamlet search runs once per world, always** (the user, 2026-11-05: it has to get
+  it right the first time, at whatever cost in time). Before, a search that found no site left the
+  world unsettled and re-ran on every later load. The search is deterministic, so it failed the
+  same way every time. Now, if no site passes the full checks anywhere, a second pass with relaxed
+  checks runs (any temperate land biome, no shore-biome check, flatness 5, 12 plots). If even that
+  finds nothing, the world is settled with no hamlets (the op notice says 0 of 8), and players
+  joining later don't search again either.
+- **The planned-coast search has no time cap**: it ends when it has all eight hamlets or has tried
+  every coast cell. The 8-minute cap could stop it with good cells untried, leaving fewer hamlets
+  for good. The fallback searches (no Terra Continental plan) keep the cap, and the spiral scan
+  gets one too.
+- **A first load that's cut short never builds a hamlet twice** (the user, 2026-11-05: two wells
+  and two sets of houses on one site). Finished hamlets' chunks reach disk as they unload, but
+  the settlement data was written only on autosave or quit. A load cut short after some hamlets
+  were built made the next start search again and build on top of them. Now the found sites are
+  saved before any building. Each site is saved as taken before its build starts. After each
+  hamlet, its chunks and then the data are written. A restart resumes with the remaining sites,
+  with no new search. A site whose build was cut off is skipped, not rebuilt over its half-made
+  hamlet, and the op notice counts it as missing. Single player resumes on the loading screen.
+  Harness: killed during hamlet 4's build, the restart built sites 5-8 and nothing else.
+- **The search caches biome and height samples** for its duration, and computes terrain heights
+  on all but two cores. On the real-pack rig the heights were the whole cost: 1793 of them took
+  227 s of a 232 s search (127 ms each), against 4 s for biomes. Use `-Dterratowns.serialHeights=true`
+  to compute them one at a time. Harness search: 19.8 s → 8.3 s.
+- `[search-profile]` and `[build-profile]` log lines show where the first load's time goes.
+  Set `-Dterratowns.noSearchCache=true` to compare against an uncached search.
+- **The loading map tells found hamlet sites from built hamlets**: after each spawn hamlet is
+  built, `LoadingMapHook.built` fills in its marker (the user, 2026-10-31: found and built looked
+  the same). Needs Terra Continental with `LoadingStatus.built`; older versions just keep the
+  found marker.
+- **The loading map zooms onto each hamlet as it's built**: the build loop reports
+  `LoadingMapHook.building` (was a plain probe), which newer Terra Continental zooms to; older
+  versions get the probe ring as before.
+
 ## 0.5.10 — 2026-11-01
 - **Starting hamlets spread round the whole coast, well away from villages** (the user, 2026-10-31:
   on the playtest seed all eight sat on the west side, two of them 654 blocks apart, several right

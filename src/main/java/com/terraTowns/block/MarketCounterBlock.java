@@ -1,5 +1,11 @@
 package com.terraTowns.block;
 
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.InteractionResult;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.phys.BlockHitResult;
 import com.mojang.serialization.MapCodec;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -18,8 +24,8 @@ import java.util.EnumMap;
 import java.util.Map;
 
 /**
- * The Merchant's counter (0.5.4): the workstation that makes a Market Stall. The Merchant who
- * works it arrives in 0.6 (DESIGN.md §2.8); until then it registers a stall and nothing else.
+ * The Merchant's counter (0.5.4): the workstation that makes a Market Stall, and since 0.6 the
+ * Merchant's job site (DESIGN.md §2.8, {@code merchant.Merchants}).
  * Shaped and textured as an iron stair until its own model exists (user, 2026-10-16).
  */
 public class MarketCounterBlock extends HorizontalDirectionalBlock {
@@ -57,6 +63,19 @@ public class MarketCounterBlock extends HorizontalDirectionalBlock {
     @Override
     public BlockState getStateForPlacement(BlockPlaceContext context) {
         return defaultBlockState().setValue(FACING, context.getHorizontalDirection().getOpposite());
+    }
+
+    /**
+     * The stall screen: what the merchant who works this counter has on sale, at what price, and
+     * its emeralds. Only here, and only for the settlement's owner (user, 2026-11-05).
+     */
+    @Override
+    protected InteractionResult useWithoutItem(BlockState state, Level level, BlockPos pos, Player player,
+                                               BlockHitResult hit) {
+        if (level instanceof ServerLevel server && player instanceof ServerPlayer sp) {
+            com.terraTowns.event.MerchantEvents.openStall(server, sp, pos);
+        }
+        return InteractionResult.sidedSuccess(level.isClientSide);
     }
 
     @Override

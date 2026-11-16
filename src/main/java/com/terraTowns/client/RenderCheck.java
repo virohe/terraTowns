@@ -114,7 +114,46 @@ public final class RenderCheck {
             Screenshot.grab(mc.gameDirectory, "rendercheck-jobs.png",
                     mc.getMainRenderTarget(), msg -> TerraTowns.LOGGER.info("[render-check] {}", msg.getString()));
         }
-        if (ticks == desk + 180) {
+        // 0.6: a merchant you own, with stock. Its trades with the "emeralds made" section beside
+        // them, then its stall screen.
+        int stall = desk + 180;
+        if (ticks == stall) {
+            mc.setScreen(null);
+            mc.options.hideGui = false;
+            mc.getSingleplayerServer().execute(RenderCheck::stageMerchant);
+        }
+        if (ticks == stall + 40) {
+            Screenshot.grab(mc.gameDirectory, "rendercheck-merchant-trades.png",
+                    mc.getMainRenderTarget(), msg -> TerraTowns.LOGGER.info("[render-check] {}", msg.getString()));
+            TerraTowns.LOGGER.info("[render-check] trade screen open: {}", mc.screen);
+        }
+        if (ticks == stall + 50 && merchant != null) {
+            // The stall screen, as right-clicking the merchant's counter opens it.
+            mc.setScreen(null);
+            Villager m = merchant;
+            mc.getSingleplayerServer().execute(() -> com.terraTowns.event.MerchantEvents.sendInfo(
+                    mc.getSingleplayerServer().getPlayerList().getPlayers().get(0), m, true));
+        }
+        if (ticks == stall + 60 && merchant != null) {
+            // The owner lowers the bread a step: the row should turn green and say 5.
+            net.neoforged.neoforge.network.PacketDistributor.sendToServer(new com.terraTowns.network.MerchantActionPacket(
+                    merchant.getId(), com.terraTowns.network.MerchantActionPacket.Action.CHEAPER,
+                    breadEntry(merchant), 1));
+        }
+        if (ticks == stall + 80) {
+            Screenshot.grab(mc.gameDirectory, "rendercheck-merchant-stall.png",
+                    mc.getMainRenderTarget(), msg -> TerraTowns.LOGGER.info("[render-check] {}", msg.getString()));
+            TerraTowns.LOGGER.info("[render-check] stall screen open: {}", mc.screen);
+        }
+        if (ticks == stall + 85 && mc.screen instanceof com.terraTowns.client.screen.MerchantStallScreen stallScreen) {
+            // The picker for the second slot, filtered by nothing, sorted by stock.
+            stallScreen.openPicker(1);
+        }
+        if (ticks == stall + 95) {
+            Screenshot.grab(mc.gameDirectory, "rendercheck-merchant-picker.png",
+                    mc.getMainRenderTarget(), msg -> TerraTowns.LOGGER.info("[render-check] {}", msg.getString()));
+        }
+        if (ticks == stall + 110) {
             TerraTowns.LOGGER.info("[render-check] done");
             mc.stop();
         }
@@ -196,6 +235,68 @@ public final class RenderCheck {
     }
 
     private static float facingYaw;
+    private static Villager merchant;
+
+    /**
+     * Server side: make the player's hamlet a village they own, with a merchant at a counter in
+     * front of them holding bread from three bakers (default 6 each) and cookies, and some
+     * emeralds made; then open its trades as vanilla would.
+     */
+    private static void stageMerchant() {
+        ServerPlayer player = Minecraft.getInstance().getSingleplayerServer().getPlayerList().getPlayers().get(0);
+        ServerLevel level = player.serverLevel();
+        var manager = com.terraTowns.settlement.SettlementManager.get(level);
+        var s = manager.containing(player.blockPosition());
+        if (s == null) {
+            s = manager.nearest(player.blockPosition()).orElse(null);
+        }
+        if (s == null) {
+            TerraTowns.LOGGER.info("[render-check] no settlement for the merchant");
+            return;
+        }
+        s.setTier(com.terraTowns.settlement.SettlementTier.VILLAGE);
+        s.setOwnerId(player.getUUID());
+        BlockPos stand = level.getHeightmapPos(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, s.center());
+        player.teleportTo(level, stand.getX() + 0.5, stand.getY(), stand.getZ() + 0.5, 0.0F, 10.0F);
+        Villager v = EntityType.VILLAGER.create(level);
+        v.moveTo(stand.getX() + 0.5, stand.getY(), stand.getZ() + 2.5, 180.0F, 0.0F);
+        v.setNoAi(true);
+        // An Apprentice: four slots, so the header reads "3 / 4 on sale" with the pickaxe kept back.
+        v.setVillagerData(v.getVillagerData().setProfession(TerraTownsRegistries.MERCHANT_PROFESSION.get()).setLevel(2));
+        level.addFreshEntity(v);
+        var stock = com.terraTowns.merchant.Merchants.stock(v);
+        int[] prices = {2, 4, 5};
+        for (int i = 0; i < prices.length; i++) {
+            stock.receive(java.util.UUID.randomUUID(), new ItemStack(Items.BREAD), 40, 8,
+                    new com.terraTowns.merchant.MerchantPrice(prices[i], 1));
+        }
+        stock.receive(java.util.UUID.randomUUID(), new ItemStack(Items.COOKIE), 70, 128,
+                new com.terraTowns.merchant.MerchantPrice(3, 18));
+        stock.receive(java.util.UUID.randomUUID(), new ItemStack(Items.IRON_PICKAXE), 2, 1,
+                new com.terraTowns.merchant.MerchantPrice(7, 1));
+        stock.receive(java.util.UUID.randomUUID(), new ItemStack(Items.PUMPKIN_PIE), 16, 4,
+                new com.terraTowns.merchant.MerchantPrice(1, 4));
+        com.terraTowns.merchant.Merchants.refreshOffers(v);
+        stock.setListed(stock.entry(new ItemStack(Items.IRON_PICKAXE)), false, 4);
+        stock.sell(stock.entry(new ItemStack(Items.BREAD)), 12, 72);
+        merchant = v;
+        com.terraTowns.merchant.Merchants.refreshOffers(v);
+        com.terraTowns.event.MerchantEvents.sendInfo(player, v, false);
+        v.setTradingPlayer(player);
+        v.openTradingScreen(player, v.getDisplayName(), v.getVillagerData().getLevel());
+        TerraTowns.LOGGER.info("[render-check] staged merchant {} in {} with {} offers", v.getId(), s.name(), v.getOffers().size());
+    }
+
+    /** The bread's index in the staged merchant's stock (read on the client's copy of the entity). */
+    private static int breadEntry(Villager merchant) {
+        var server = Minecraft.getInstance().getSingleplayerServer();
+        var v = server.overworld().getEntity(merchant.getId());
+        if (v instanceof Villager sv) {
+            var stock = com.terraTowns.merchant.Merchants.stock(sv);
+            return stock.indexOf(stock.entry(new ItemStack(Items.BREAD)));
+        }
+        return 0;
+    }
 
     /** Server side: midday, clear sky, and a Guard in full iron 2.5 blocks in front of the player. */
     private static void stage() {

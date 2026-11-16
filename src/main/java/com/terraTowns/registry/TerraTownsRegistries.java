@@ -72,6 +72,9 @@ public final class TerraTownsRegistries {
     public static final DeferredRegister<VillagerProfession> VILLAGER_PROFESSIONS =
             DeferredRegister.create(Registries.VILLAGER_PROFESSION, TerraTowns.MOD_ID);
 
+    public static final DeferredRegister<net.neoforged.neoforge.attachment.AttachmentType<?>> ATTACHMENT_TYPES =
+            DeferredRegister.create(net.neoforged.neoforge.registries.NeoForgeRegistries.Keys.ATTACHMENT_TYPES, TerraTowns.MOD_ID);
+
     // --- blocks ------------------------------------------------------------
 
     /**
@@ -122,6 +125,19 @@ public final class TerraTownsRegistries {
                             .requiresCorrectToolForDrops()
                             .noOcclusion()));
 
+    /**
+     * The Rancher's manger (TT-218): its workstation, and what makes an animal pen a Farm. Wood,
+     * and an anvil to look at until its own model exists.
+     */
+    public static final DeferredBlock<com.terraTowns.block.MangerBlock> MANGER =
+            BLOCKS.register("manger",
+                    () -> new com.terraTowns.block.MangerBlock(BlockBehaviour.Properties.of()
+                            .mapColor(MapColor.WOOD)
+                            .strength(2.5f)
+                            .sound(net.minecraft.world.level.block.SoundType.WOOD)
+                            .ignitedByLava()
+                            .noOcclusion()));
+
     // --- block entities ----------------------------------------------------
 
     public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<BuildingPlaqueBlockEntity>>
@@ -132,14 +148,31 @@ public final class TerraTownsRegistries {
             GYM_LEADERS_DESK_BE = BLOCK_ENTITIES.register("gym_leaders_desk",
             () -> BlockEntityType.Builder.of(GymLeadersDeskBlockEntity::new, GYM_LEADERS_DESK.get()).build(null));
 
+    public static final ResourceKey<PoiType> MARKET_COUNTER_POI_KEY = ResourceKey.create(
+            Registries.POINT_OF_INTEREST_TYPE,
+            ResourceLocation.fromNamespaceAndPath(TerraTowns.MOD_ID, "market_counter"));
+
     /**
      * The counter as a point of interest (0.5.4), so a building holding one is found like any
-     * workstation. The Merchant profession that works it arrives in 0.6; until then no villager
-     * can claim it (it is not an acquirable job site).
+     * workstation, and the Merchant's job site (0.6). Not an acquirable job site: like guard
+     * posts, counters are handed out to villages only ({@code Merchants.recruit}).
      */
     public static final DeferredHolder<PoiType, PoiType> MARKET_COUNTER_POI =
             POI_TYPES.register("market_counter", () -> new PoiType(
                     Set.copyOf(MARKET_COUNTER.get().getStateDefinition().getPossibleStates()), 1, 1));
+
+    public static final ResourceKey<PoiType> MANGER_POI_KEY = ResourceKey.create(
+            Registries.POINT_OF_INTEREST_TYPE,
+            ResourceLocation.fromNamespaceAndPath(TerraTowns.MOD_ID, "manger"));
+
+    /**
+     * The manger as a point of interest: the Rancher's job site. Acquirable like any vanilla
+     * workstation (in {@code #minecraft:acquirable_job_site}): an unemployed villager near one
+     * becomes a Rancher by itself, as near a composter it becomes a farmer.
+     */
+    public static final DeferredHolder<PoiType, PoiType> MANGER_POI =
+            POI_TYPES.register("manger", () -> new PoiType(
+                    Set.copyOf(MANGER.get().getStateDefinition().getPossibleStates()), 1, 1));
 
     // --- villager gym leader: desk job-site POI + profession ---------------
 
@@ -202,6 +235,49 @@ public final class TerraTownsRegistries {
                     ImmutableSet.<Block>of(),
                     null));
 
+    /**
+     * The Merchant (0.6, DESIGN.md §2.8): sells what the village's workers make, from their
+     * overstock. Works a market counter; never takes one up on its own (see the POI above).
+     */
+    public static final DeferredHolder<VillagerProfession, VillagerProfession> MERCHANT_PROFESSION =
+            VILLAGER_PROFESSIONS.register("merchant", () -> new VillagerProfession(
+                    "merchant",
+                    holder -> holder.is(MARKET_COUNTER_POI_KEY),
+                    holder -> false,
+                    ImmutableSet.<Item>of(),
+                    ImmutableSet.<Block>of(),
+                    null));
+
+    /**
+     * The Rancher (TT-218): tends the animal pens. Works a manger, takes one up by itself, and
+     * walks through fence gates, as every villager does, while they stay closed ({@code rancher.Ranchers}).
+     * Its trades are {@code rancher.RancherTrades}.
+     */
+    public static final DeferredHolder<VillagerProfession, VillagerProfession> RANCHER_PROFESSION =
+            VILLAGER_PROFESSIONS.register("rancher", () -> new VillagerProfession(
+                    "rancher",
+                    holder -> holder.is(MANGER_POI_KEY),
+                    holder -> holder.is(MANGER_POI_KEY),
+                    ImmutableSet.<Item>of(),
+                    ImmutableSet.<Block>of(),
+                    net.minecraft.sounds.SoundEvents.VILLAGER_WORK_SHEPHERD));
+
+    // --- attachments -------------------------------------------------------
+
+    /** A merchant's goods, prices and takings (0.6). Saved with the villager. */
+    public static final java.util.function.Supplier<net.neoforged.neoforge.attachment.AttachmentType<com.terraTowns.merchant.MerchantStock>>
+            MERCHANT_STOCK = ATTACHMENT_TYPES.register("merchant_stock",
+            () -> net.neoforged.neoforge.attachment.AttachmentType.serializable(com.terraTowns.merchant.MerchantStock::new).build());
+
+    /**
+     * The day (game time / 24000) a worker last handed its unsold goods to a merchant (0.6), so
+     * it does so once a day even when nobody bought anything and vanilla never restocks it.
+     */
+    public static final java.util.function.Supplier<net.neoforged.neoforge.attachment.AttachmentType<Long>>
+            OVERSTOCK_DAY = ATTACHMENT_TYPES.register("overstock_day",
+            () -> net.neoforged.neoforge.attachment.AttachmentType.builder(() -> -1L)
+                    .serialize(com.mojang.serialization.Codec.LONG).build());
+
     // --- entities ----------------------------------------------------------
 
     public static final DeferredHolder<EntityType<?>, EntityType<GymLeaderEntity>> GYM_LEADER =
@@ -235,6 +311,8 @@ public final class TerraTownsRegistries {
             ITEMS.registerSimpleBlockItem(BUILDING_PLAQUE);
     public static final DeferredItem<BlockItem> MARKET_COUNTER_ITEM =
             ITEMS.registerSimpleBlockItem(MARKET_COUNTER);
+    public static final DeferredItem<BlockItem> MANGER_ITEM =
+            ITEMS.registerSimpleBlockItem(MANGER);
 
     public static final DeferredItem<DeferredSpawnEggItem> GYM_LEADER_SPAWN_EGG =
             ITEMS.register("gym_leader_spawn_egg",
@@ -257,6 +335,7 @@ public final class TerraTownsRegistries {
                         output.accept(GYM_LEADERS_DESK_ITEM.get());
                         output.accept(BUILDING_PLAQUE_ITEM.get());
                         output.accept(MARKET_COUNTER_ITEM.get());
+                        output.accept(MANGER_ITEM.get());
                         output.accept(ROUTE_MARKER_ITEM.get());
                         output.accept(GYM_LEADER_SPAWN_EGG.get());
                         output.accept(PROFESSOR_SPAWN_EGG.get());
@@ -274,6 +353,7 @@ public final class TerraTownsRegistries {
         CREATIVE_MODE_TABS.register(modEventBus);
         POI_TYPES.register(modEventBus);
         VILLAGER_PROFESSIONS.register(modEventBus);
+        ATTACHMENT_TYPES.register(modEventBus);
         modEventBus.addListener(TerraTownsRegistries::onCreateAttributes);
     }
 

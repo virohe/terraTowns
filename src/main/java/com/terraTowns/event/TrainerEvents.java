@@ -33,7 +33,7 @@ public final class TrainerEvents {
         if (event.getLevel().isClientSide) {
             return;
         }
-        if (event.getTarget() instanceof RivalEntity rival) {
+        if (event.getTarget() instanceof RivalEntity rival && !rival.retired()) {
             if (event.getEntity() instanceof ServerPlayer player
                     && event.getLevel() instanceof ServerLevel level) {
                 challengeRival(level, player, rival);
@@ -58,7 +58,7 @@ public final class TrainerEvents {
      *
      * <p><b>0.4 placeholder, same as the gym:</b> the player wins, because Cobblemon battles are
      * not wired yet. Everything around the outcome is real — the defeat is recorded, the rivalry
-     * ranks up, and the entity leaves so the next posting arrives stronger — so when the real
+     * ranks up, and the next posting arrives stronger — so when the real
      * battle lands, only the win/lose line changes.</p>
      */
     private static void challengeRival(ServerLevel level, ServerPlayer player, RivalEntity rival) {
@@ -68,7 +68,10 @@ public final class TrainerEvents {
             return;
         }
         RivalPool pool = RivalPool.get(level);
-        SettlementData credited = RivalPosting.defeated(level, player.getUUID());
+        // The rival used to be discarded here, which took any job it had claimed with it; it now
+        // stays as a villager of the settlement. The rivalry lives in RivalPool, so the next
+        // posting still shows up fresh at the higher rank.
+        SettlementData credited = RivalPosting.defeated(level, rival, player.getUUID());
         int defeats = pool.record(player.getUUID()).defeats();
         int nextRank = pool.rankFor(level, player.getUUID());
 
@@ -81,8 +84,5 @@ public final class TrainerEvents {
         player.sendSystemMessage(Component.translatable("message.terra_towns.rival.returns", nextRank)
                 .withStyle(ChatFormatting.GRAY));
 
-        // The rivalry lives in RivalPool, not in this entity — dropping it is free, and it is
-        // what lets the next posting show up at the higher rank rather than re-using a stale one.
-        rival.discard();
     }
 }

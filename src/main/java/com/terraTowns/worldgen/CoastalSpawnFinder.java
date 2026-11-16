@@ -99,6 +99,26 @@ public final class CoastalSpawnFinder {
     private static final int PLOT_STEP = 6;
     private static final int PLOT_RELIEF = 3;
 
+    /**
+     * The checks a site must pass. {@link #STRICT} is the real bar; {@link #RELAXED} runs only when
+     * the strict search found nothing anywhere, so a world never ends up without a starting hamlet
+     * (the user, 2026-11-05: the search must get it right on the first load; "no sites, retry next
+     * start" re-ran the same deterministic search, and failed the same way, on every load).
+     *
+     * @param anyTemperateLand also accept non-cozy land biomes with a temperate climate
+     * @param pleasantShore    require the whole shore band to be beach/cozy/water
+     */
+    private record Rules(String name, boolean anyTemperateLand, boolean pleasantShore,
+                         int maxRelief, double minLandFraction, int minPlots, int plotRelief) {
+    }
+
+    private static final Rules STRICT = new Rules("strict", false, true,
+            MAX_RELIEF, MIN_LAND_FRACTION, MIN_PLOTS, PLOT_RELIEF);
+    private static final Rules RELAXED = new Rules("relaxed", true, false,
+            5, 0.6, 12, 4);
+    /** Rules for the search in progress (server thread only). */
+    private static Rules rules = STRICT;
+
     /** 8 compass directions used for the ring scans. */
     private static final int[][] DIRS = {
             {1, 0}, {-1, 0}, {0, 1}, {0, -1}, {1, 1}, {1, -1}, {-1, 1}, {-1, -1}};
@@ -182,10 +202,9 @@ public final class CoastalSpawnFinder {
     /** Distinct landmasses tried (a tiny island near spawn may yield no qualifying sites). */
     private static final int SEED_TRIES = 3;
     /**
-     * Wall-clock budget for the whole spawn search. Quality-first policy: sites must pass the
-     * FULL strictness gate, so on rough seeds the search may spend real time — this is a one-time
-     * world-creation cost the operator accepts. If the budget elapses, whatever qualified so far
-     * is used (the op shortfall notice reports the gap so the operator can reroll the world).
+     * Wall-clock budget for the FALLBACK searches only (coast trace, spiral scan), which run when
+     * Terra Continental has no plan. The planned-coast search has no budget: it ends when it has
+     * every hamlet or has tried every coast cell (the user, 2026-11-05).
      */
     private static final long SEARCH_BUDGET_NANOS = 480_000_000_000L; // 8 min
     /**
@@ -215,6 +234,26 @@ public final class CoastalSpawnFinder {
      * guarantees all candidates share one continent.</p>
      */
     public static List<BlockPos> findCandidates(ServerLevel level, int count, int minSpacing, int anchorRadius) {
+        Probe.begin(QuartPos.fromBlock(level.getChunkSource().getGenerator().getSeaLevel()));
+        spacingProblem = null;
+        try {
+            rules = STRICT;
+            List<BlockPos> sites = search(level, count, minSpacing, anchorRadius);
+            if (sites.isEmpty() && level.getServer().isRunning()) {
+                TerraTowns.LOGGER.warn("No hamlet site passed the full checks anywhere; searching again with relaxed checks");
+                com.terraTowns.integration.LoadingMapHook.message("No ideal coast found. Looking for a good-enough one");
+                rules = RELAXED;
+                sites = search(level, count, minSpacing, anchorRadius);
+                TerraTowns.LOGGER.warn("Relaxed search found {} hamlet sites", sites.size());
+            }
+            return sites;
+        } finally {
+            rules = STRICT;
+            Probe.end();
+        }
+    }
+
+    private static List<BlockPos> search(ServerLevel level, int count, int minSpacing, int anchorRadius) {
         ChunkGenerator generator = level.getChunkSource().getGenerator();
         RandomState randomState = level.getChunkSource().randomState();
         BiomeSource biomeSource = generator.getBiomeSource();
@@ -334,11 +373,14 @@ public final class CoastalSpawnFinder {
         TerraTowns.LOGGER.info("Planned coast: {} cells, {} villages", m, villages.length / 2);
 
         List<BlockPos> found = new ArrayList<>();
+        List<Integer> foundCells = new ArrayList<>();
         boolean[] dropped = new boolean[m];
         int[] stats = new int[STAT_NAMES.length];
         com.terraTowns.integration.LoadingMapHook.message("Checking the coast for hamlet sites: 0 of " + count + " found");
-        long deadline = start + SEARCH_BUDGET_NANOS;
-        while (found.size() < count && System.nanoTime() < deadline) {
+        // No time budget here (the user, 2026-11-05): the search runs until it has every hamlet
+        // or has tried every coast cell. The coast is finite, so it always ends; an 8-minute cap
+        // could stop it with good cells untried and hand the world fewer hamlets for good.
+        while (found.size() < count && level.getServer().isRunning()) {
             int best = -1;
             double bestScore = -1;
             for (int i = 0; i < m; i++) {
@@ -364,6 +406,7 @@ public final class CoastalSpawnFinder {
                     generator, level, randomState, biomeSource, sampler, manager, seaLevel);
             if (site == null) continue;
             found.add(site);
+            foundCells.add(best);
             double toVillage = villageDistance(villages, site.getX(), site.getZ());
             com.terraTowns.integration.LoadingMapHook.chosen(site.getX(), site.getZ());
             com.terraTowns.integration.LoadingMapHook.message(
@@ -378,14 +421,82 @@ public final class CoastalSpawnFinder {
         for (int i = 0; i < STAT_NAMES.length; i++) {
             report.append(i > 0 ? ", " : "").append(STAT_NAMES[i]).append(' ').append(stats[i]);
         }
-        TerraTowns.LOGGER.info("Site-filter tallies: {}", report);
+        TerraTowns.LOGGER.info("Site-filter tallies ({}): {}", rules.name(), report);
         TerraTowns.LOGGER.info("Planned coast: {} sites placed ({} ms)", found.size(), (System.nanoTime() - start) / 1_000_000L);
+        if (level.getServer().isRunning()) { // stopped for a new seed: a partial set says nothing
+            spacingProblem = assessSpacing(coast, foundCells, found, count);
+        }
+        Probe.report("planned coast, " + rules.name());
         List<CoastCell> drawn = new ArrayList<>();
         for (int i = 0; i < m; i++) {
             drawn.add(new CoastCell(coast[4 * i] / CELL, coast[4 * i + 1] / CELL, coast[4 * i + 2], coast[4 * i + 3]));
         }
         dumpBiomeMap(biomeSource, sampler, seaLevel, drawn, found);
         return found;
+    }
+
+    /** Why the last planned-coast search's hamlets look poorly spread; null if fine or not judged. */
+    private static String spacingProblem;
+
+    public static String lastSpacingProblem() {
+        return spacingProblem;
+    }
+
+    /**
+     * Even spread round the coast would put a hamlet every {@code coast length / count} blocks of
+     * shore. A stretch of coast with none over this many times that is "half the coast empty".
+     */
+    static final double ARC_GAP_WARN = 2.5;
+    /**
+     * Two hamlets nearer each other in a straight line than this share of that spacing are crowded,
+     * up to {@link #CROWD_MAX} blocks: a fjord coast is long for its size, and on the 180 km2 test
+     * continent (121 km of coast) a quarter of the even share was 3792, with a fine nearest pair at 3974;
+     * another fine world (143 km2) had 2082, the user's poor one 733.
+     */
+    static final double CROWD_WARN = 0.25;
+    static final int CROWD_MAX = 1500;
+
+    /**
+     * Are the hamlets poorly spread round the coast? The user's 2026-11-10 world: on a 58 km2
+     * continent the eight sat in pairs 742 and 813 blocks apart along the south and north-east, and
+     * none on the west coast. Two tests, logged with their numbers: the longest stretch of coast with
+     * no hamlet (measured along the plan's coast loop), and the nearest pair in a straight line.
+     * Fewer than two hamlets: nothing to judge (the count warning covers that).
+     */
+    static String assessSpacing(int[] coast, List<Integer> cells, List<BlockPos> found, int count) {
+        int m = coast.length / 4;
+        if (found.size() < 2 || m < 2) return null;
+        double[] at = new double[m];
+        double length = 0;
+        for (int i = 0; i < m; i++) {
+            at[i] = length;
+            int j = (i + 1) % m;
+            length += Math.hypot(coast[4 * j] - coast[4 * i], coast[4 * j + 1] - coast[4 * i + 1]);
+        }
+        double[] s = new double[cells.size()];
+        for (int k = 0; k < s.length; k++) s[k] = at[cells.get(k)];
+        java.util.Arrays.sort(s);
+        double maxGap = length - s[s.length - 1] + s[0];
+        for (int k = 1; k < s.length; k++) maxGap = Math.max(maxGap, s[k] - s[k - 1]);
+        double nearest = Double.MAX_VALUE;
+        for (int a = 0; a < found.size(); a++) {
+            for (int b = a + 1; b < found.size(); b++) {
+                nearest = Math.min(nearest, Math.hypot(found.get(a).getX() - found.get(b).getX(),
+                        found.get(a).getZ() - found.get(b).getZ()));
+            }
+        }
+        double even = length / count;
+        List<String> why = new ArrayList<>();
+        if (maxGap > ARC_GAP_WARN * length / found.size()) {
+            why.add(Math.round(100 * maxGap / length) + "% of the coast has no hamlet");
+        }
+        if (nearest < Math.min(CROWD_WARN * even, CROWD_MAX)) {
+            why.add("two hamlets " + Math.round(nearest) + " blocks apart");
+        }
+        TerraTowns.LOGGER.info("Hamlet spread: coast {} blocks (even spacing {}), longest empty stretch {}% of it, nearest pair {} blocks; {}",
+                Math.round(length), Math.round(even), Math.round(100 * maxGap / length), Math.round(nearest),
+                why.isEmpty() ? "looks fine" : "non-optimal: " + String.join(", ", why));
+        return why.isEmpty() ? null : String.join(", ", why);
     }
 
     /** Probe one plan coast cell, from the sea side inland; null if no spot qualifies. */
@@ -431,8 +542,12 @@ public final class CoastalSpawnFinder {
         int x = 0, z = 0, dirX = 1, dirZ = 0, segLen = 1, segPass = 0, turns = 0;
         int maxCells = 2 * (MAX_RADIUS / STEP) + 1;
         long cellBudget = (long) maxCells * maxCells;
+        // A last resort when neither the plan nor the coast trace found anything: bounded in time,
+        // since a million cells of full checks could otherwise hold the loading screen for an hour.
+        long deadline = System.nanoTime() + SEARCH_BUDGET_NANOS;
 
-        for (long i = 0; i < cellBudget && found.size() < count; i++) {
+        for (long i = 0; i < cellBudget && found.size() < count && System.nanoTime() < deadline
+                && level.getServer().isRunning(); i++) {
             int bx = x * STEP;
             int bz = z * STEP;
             if (Math.abs(bx) <= MAX_RADIUS && Math.abs(bz) <= MAX_RADIUS
@@ -544,7 +659,7 @@ public final class CoastalSpawnFinder {
         int[] stats = new int[STAT_NAMES.length];
 
         com.terraTowns.integration.LoadingMapHook.message("Checking the coast for hamlet sites: 0 of " + count + " found");
-        for (int k = 0; k < count; k++) {
+        for (int k = 0; k < count && level.getServer().isRunning(); k++) {
             if (System.nanoTime() > deadline) {
                 TerraTowns.LOGGER.warn("Spawn-search budget exhausted after {} sites — keeping what qualified",
                         found.size());
@@ -744,9 +859,12 @@ public final class CoastalSpawnFinder {
     private static boolean qualifies(ChunkGenerator generator, ServerLevel level, RandomState randomState,
                                      BiomeSource biomeSource, Climate.Sampler sampler,
                                      SettlementManager manager, int seaLevel, int bx, int bz, int[] stats) {
+        if (!level.getServer().isRunning()) {
+            return false; // "Try a New Seed" stopped the server: every search runs out at once
+        }
         com.terraTowns.integration.LoadingMapHook.probe(bx, bz);
         Holder<Biome> here = biomeAt(biomeSource, sampler, bx, seaLevel, bz);
-        if (!isCozy(here)) {
+        if (!settleable(here)) {
             if (stats != null) {
                 REJECTED_BIOMES.merge(here.getRegisteredName(), 1, Integer::sum);
             }
@@ -759,7 +877,7 @@ public final class CoastalSpawnFinder {
         if (shore < MIN_SHORE_DISTANCE || shore > MAX_SHORE_DISTANCE) {
             return tally(stats, 2);
         }
-        if (!pleasantShore(biomeSource, sampler, bx, seaLevel, bz)) {
+        if (rules.pleasantShore() && !pleasantShore(biomeSource, sampler, bx, seaLevel, bz)) {
             return tally(stats, 3);
         }
         if (!continentalBacking(biomeSource, sampler, bx, seaLevel, bz)) {
@@ -775,8 +893,8 @@ public final class CoastalSpawnFinder {
             return tally(stats, 7);
         }
         int plots = plotCount(generator, level, randomState, seaLevel, bx, bz);
-        if (plots < MIN_PLOTS) {
-            TerraTowns.LOGGER.info("Hamlet site {},{} rejected as cramped: {} plots (need {})", bx, bz, plots, MIN_PLOTS);
+        if (plots < rules.minPlots()) {
+            TerraTowns.LOGGER.info("Hamlet site {},{} rejected as cramped: {} plots (need {})", bx, bz, plots, rules.minPlots());
             return tally(stats, 8);
         }
         TerraTowns.LOGGER.info("Hamlet site {},{}: {} plots", bx, bz, plots);
@@ -806,7 +924,7 @@ public final class CoastalSpawnFinder {
     private static boolean solidCozyCore(BiomeSource source, Climate.Sampler sampler, int x, int seaLevel, int z) {
         for (int[] dir : DIRS) {
             Holder<Biome> b = biomeAt(source, sampler, x + dir[0] * CORE_RADIUS, seaLevel, z + dir[1] * CORE_RADIUS);
-            if (b.is(BiomeTags.IS_BEACH) || !isCozy(b)) {
+            if (b.is(BiomeTags.IS_BEACH) || !settleable(b)) {
                 return false;
             }
         }
@@ -849,19 +967,23 @@ public final class CoastalSpawnFinder {
         int land = 0;
         int min = Integer.MAX_VALUE;
         int max = Integer.MIN_VALUE;
+        int[] xs = new int[9], zs = new int[9];
         for (int dx = -FOOTPRINT_HALF; dx <= FOOTPRINT_HALF; dx += FOOTPRINT_HALF) {
             for (int dz = -FOOTPRINT_HALF; dz <= FOOTPRINT_HALF; dz += FOOTPRINT_HALF) {
+                xs[total] = x + dx;
+                zs[total] = z + dz;
                 total++;
-                int h = terrainTop(generator, level, randomState, x + dx, z + dz);
-                if (h > seaLevel) {
-                    land++;
-                    min = Math.min(min, h);
-                    max = Math.max(max, h);
-                }
+            }
+        }
+        for (int h : terrainTops(generator, level, randomState, xs, zs)) {
+            if (h > seaLevel) {
+                land++;
+                min = Math.min(min, h);
+                max = Math.max(max, h);
             }
         }
         // Mostly dry land, and the land that's there is reasonably flat.
-        return land >= total * MIN_LAND_FRACTION && (max - min) <= MAX_RELIEF;
+        return land >= total * rules.minLandFraction() && (max - min) <= rules.maxRelief();
     }
 
     /**
@@ -878,12 +1000,14 @@ public final class CoastalSpawnFinder {
         int step = PLOT_STEP;
         int reach = PLOT_RADIUS / step + 1;
         int n = 2 * reach + 1;
-        int[] h = new int[n * n];
+        int[] xs = new int[n * n], zs = new int[n * n];
         for (int i = 0; i < n; i++) {
             for (int j = 0; j < n; j++) {
-                h[i * n + j] = terrainTop(generator, level, randomState, x + (i - reach) * step, z + (j - reach) * step);
+                xs[i * n + j] = x + (i - reach) * step;
+                zs[i * n + j] = z + (j - reach) * step;
             }
         }
+        int[] h = terrainTops(generator, level, randomState, xs, zs);
         int plots = 0;
         int r = PLOT_RADIUS / step;
         for (int i = -r; i <= r; i++) {
@@ -899,7 +1023,7 @@ public final class CoastalSpawnFinder {
                         max = Math.max(max, y);
                     }
                 }
-                if (min > seaLevel && max - min <= PLOT_RELIEF) {
+                if (min > seaLevel && max - min <= rules.plotRelief()) {
                     plots++;
                 }
             }
@@ -909,7 +1033,110 @@ public final class CoastalSpawnFinder {
 
     /** Terrain surface height (water excluded) from the generator's noise. */
     private static int terrainTop(ChunkGenerator generator, ServerLevel level, RandomState randomState, int x, int z) {
-        return generator.getBaseHeight(x, z, Heightmap.Types.OCEAN_FLOOR_WG, level, randomState);
+        Probe.heightCalls++;
+        Map<Long, Integer> cache = Probe.heights;
+        long key = cellKey(x, z);
+        if (cache != null) {
+            Integer h = cache.get(key);
+            if (h != null) return h;
+        }
+        long t = System.nanoTime();
+        int h = generator.getBaseHeight(x, z, Heightmap.Types.OCEAN_FLOOR_WG, level, randomState);
+        Probe.heightNanos += System.nanoTime() - t;
+        Probe.heightMisses++;
+        if (cache != null) cache.put(key, h);
+        return h;
+    }
+
+    /**
+     * Many terrain heights at once, the uncached ones computed in parallel. One height costs ~127 ms
+     * in this pack (real-pack rig, 2026-11-05: 1793 of them were 227 s of a 232 s search), and a
+     * site's plot count needs 169. Heights are pure functions of the seed and worldgen already
+     * evaluates the same noise on many threads, so the result is the same as computing them in turn.
+     */
+    private static int[] terrainTops(ChunkGenerator generator, ServerLevel level, RandomState randomState,
+                                     int[] xs, int[] zs) {
+        int[] out = new int[xs.length];
+        Map<Long, Integer> cache = Probe.heights;
+        List<Integer> todo = new ArrayList<>();
+        for (int i = 0; i < xs.length; i++) {
+            Probe.heightCalls++;
+            Integer h = cache == null ? null : cache.get(cellKey(xs[i], zs[i]));
+            if (h != null) {
+                out[i] = h;
+            } else {
+                todo.add(i);
+            }
+        }
+        if (todo.isEmpty()) return out;
+        long t = System.nanoTime();
+        java.util.concurrent.ForkJoinPool pool = Probe.pool;
+        Runnable work = () -> todo.parallelStream().forEach(i -> out[i] = generator.getBaseHeight(
+                xs[i], zs[i], Heightmap.Types.OCEAN_FLOOR_WG, level, randomState));
+        if (pool == null || todo.size() == 1) {
+            work.run();
+        } else {
+            pool.submit(work).join();
+        }
+        Probe.heightNanos += System.nanoTime() - t;
+        Probe.heightMisses += todo.size();
+        if (cache != null) {
+            for (int i : todo) cache.put(cellKey(xs[i], zs[i]), out[i]);
+        }
+        return out;
+    }
+
+    /** A biome a hamlet may stand in under the current {@link #rules}. */
+    private static boolean settleable(Holder<Biome> biome) {
+        if (isCozy(biome)) return true;
+        if (!rules.anyTemperateLand()) return false;
+        if (biome.is(BiomeTags.IS_OCEAN) || biome.is(BiomeTags.IS_RIVER) || biome.is(BiomeTags.IS_BEACH)) return false;
+        float t = biome.value().getBaseTemperature();
+        return t >= NB_MIN_TEMP && t <= NB_MAX_TEMP;
+    }
+
+    /**
+     * Per-search caches and timings. A site check samples rings of biomes and grids of heights
+     * around its spot, and the spots tried along one coast cell sit 12 blocks apart, so most
+     * samples repeat; both are pure functions of the seed, so a cache changes nothing but time.
+     * The counts and times are logged after each search (the user, 2026-11-05: find where the
+     * first load's time goes). Server thread only; the caches exist only during a search.
+     */
+    private static final class Probe {
+        static Map<Long, Holder<Biome>> biomes;
+        static Map<Long, Integer> heights;
+        static long biomeCalls, biomeMisses, biomeNanos, heightCalls, heightMisses, heightNanos, start;
+        static int seaQuart;
+        /** Threads for {@link #terrainTops}; leaves two cores for the server and the loading screen. */
+        static java.util.concurrent.ForkJoinPool pool;
+
+        static void begin(int seaLevelQuart) {
+            seaQuart = seaLevelQuart;
+            int threads = Boolean.getBoolean("terratowns.serialHeights") ? 1
+                    : Math.max(1, Runtime.getRuntime().availableProcessors() - 2);
+            pool = threads > 1 ? new java.util.concurrent.ForkJoinPool(threads) : null;
+            biomes = Boolean.getBoolean("terratowns.noSearchCache") ? null : new HashMap<>();
+            heights = biomes == null ? null : new HashMap<>();
+            biomeCalls = biomeMisses = biomeNanos = heightCalls = heightMisses = heightNanos = 0;
+            start = System.nanoTime();
+        }
+
+        static void end() {
+            report("whole search");
+            if (pool != null) pool.shutdown();
+            pool = null;
+            biomes = null;
+            heights = null;
+        }
+
+        static void report(String what) {
+            TerraTowns.LOGGER.info("[search-profile] {}: {} ms total; biome samples {} ({} computed, {} ms); "
+                            + "heights {} ({} computed, {} ms, {} threads); caches {}",
+                    what, (System.nanoTime() - start) / 1_000_000L,
+                    biomeCalls, biomeMisses, biomeNanos / 1_000_000L,
+                    heightCalls, heightMisses, heightNanos / 1_000_000L, pool == null ? 1 : pool.getParallelism(),
+                    biomes == null ? "off" : "on");
+        }
     }
 
     private static boolean farEnough(List<BlockPos> found, int bx, int bz, int minSpacing) {
@@ -976,7 +1203,22 @@ public final class CoastalSpawnFinder {
     }
 
     private static Holder<Biome> biomeAt(BiomeSource source, Climate.Sampler sampler, int x, int y, int z) {
-        return source.getNoiseBiome(QuartPos.fromBlock(x), QuartPos.fromBlock(y), QuartPos.fromBlock(z), sampler);
+        int qx = QuartPos.fromBlock(x), qy = QuartPos.fromBlock(y), qz = QuartPos.fromBlock(z);
+        Probe.biomeCalls++;
+        Map<Long, Holder<Biome>> cache = Probe.biomes;
+        // Every caller samples at sea level, so (qx, qz) is the key; a different y skips the cache.
+        boolean cacheable = cache != null && qy == Probe.seaQuart;
+        long key = cellKey(qx, qz);
+        if (cacheable) {
+            Holder<Biome> b = cache.get(key);
+            if (b != null) return b;
+        }
+        long t = System.nanoTime();
+        Holder<Biome> b = source.getNoiseBiome(qx, qy, qz, sampler);
+        Probe.biomeNanos += System.nanoTime() - t;
+        Probe.biomeMisses++;
+        if (cacheable) cache.put(key, b);
+        return b;
     }
 
     private static boolean notClaimed(SettlementManager manager, int x, int z) {

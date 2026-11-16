@@ -1,0 +1,21 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "pattern": [
+    "P P",
+    "PHP",
+    "PPP"
+  ],
+  "key": {
+    "P": {
+      "tag": "minecraft:planks"
+    },
+    "H": {
+      "item": "minecraft:hay_block"
+    }
+  },
+  "result": {
+    "id": "terra_towns:manger",
+    "count": 1
+  }
+}

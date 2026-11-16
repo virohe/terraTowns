@@ -6,7 +6,10 @@
   "mixins": [
     "JigsawPlacerMixin",
     "LithostitchedJigsawMixin",
-    "VillagerMixin"
+    "VillagerMixin",
+    "WalkNodeEvaluatorMixin",
+    "FenceGateBlockMixin",
+    "MoveControlMixin"
   ],
   "client": [],
   "injectors": {

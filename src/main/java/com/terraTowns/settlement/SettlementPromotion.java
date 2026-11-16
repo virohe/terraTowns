@@ -189,10 +189,11 @@ public final class SettlementPromotion {
     /**
      * A townsperson, as opposed to one of the mod's trainer NPCs. The Professor, rivals and the
      * gym-leader entity all extend {@link Villager} so they can reuse its AI and renderer, which
-     * meant every one of them was being counted as population toward promotion.
+     * meant every one of them was being counted as population toward promotion. A beaten rival
+     * has settled down and is a resident like any other (0.6).
      */
     public static boolean isResident(Villager v) {
-        return !(v instanceof ProfessorEntity) && !(v instanceof RivalEntity)
+        return !(v instanceof ProfessorEntity) && !(v instanceof RivalEntity r && !r.retired())
                 && !(v instanceof GymLeaderEntity);
     }
 

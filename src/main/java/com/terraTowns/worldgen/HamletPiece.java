@@ -1049,6 +1049,7 @@ public final class HamletPiece {
         if (profile.open()) {
             levelOpenInterior(minWorldX, minWorldZ, sxR, szR, floorY, ground);
         }
+        bankUp(minWorldX, minWorldZ, sxR, szR, Math.min(baseY, grade));
 
         // Villager spawn points, carried through the rotation. Vanilla would have grown these
         // jigsaws into villagers; JigsawReplacementProcessor has just flattened them to planks.
@@ -1086,6 +1087,65 @@ public final class HamletPiece {
                 obstructions, profile.door() != null, minPerimeter, maxPerimeter,
                 doorWorld, doorstepWorld, villagerSpots,
                 grade, rise, stairInFront, stairSunk, pouredAboveFloor);
+    }
+
+    /**
+     * Bank the ground up to a piece set above it (playtest, 2026-11-10). A piece is lifted to its
+     * door's level, so on a slope its low sides stand up to {@link #MAX_STILT} blocks above the
+     * grass, and a template's bottom layer is ground (dirt) meant to sit level with it: that layer
+     * showed as a band of bare dirt under the walls, and as lone dirt blocks where it reaches past
+     * them (the harness counted 123 such blocks across 8 hamlets). As vanilla villages adapt the
+     * terrain round their buildings, the ground is raised level with the piece's base beside it
+     * (and in any open yard cell of its own), then a block lower for each block further out,
+     * capped with the column's own surface (grass stays grass, sand stays sand).
+     *
+     * <p>Never higher than the ground at the door ({@code level}, the lower of the base and the
+     * grade): a house built to stand a step up, its stair resting on the ground, keeps that ground
+     * where it is, or its doorstep and path are buried (the harness's approach check caught it).
+     * Only natural ground is raised, and only through air or plants: a column with a path,
+     * another piece, water or anything else built over it is left as it is.</p>
+     */
+    private void bankUp(int minX, int minZ, int sizeX, int sizeZ, int level0) {
+        int baseY = level0;
+        int reach = MAX_STILT + 2;
+        BlockPos.MutableBlockPos p = new BlockPos.MutableBlockPos();
+        for (int x = minX - reach; x < minX + sizeX + reach; x++) {
+            for (int z = minZ - reach; z < minZ + sizeZ + reach; z++) {
+                int out = Math.max(Math.max(minX - x, x - (minX + sizeX - 1)), Math.max(minZ - z, z - (minZ + sizeZ - 1)));
+                int target = baseY - Math.max(0, out - 1);
+                // The piece's own cells: only open ones (a yard, structure void) take ground.
+                BlockState atTarget = level.getBlockState(p.set(x, target, z));
+                if (!atTarget.isAir() && !atTarget.canBeReplaced()) {
+                    continue;
+                }
+                int top = Integer.MIN_VALUE;
+                for (int y = target; y >= target - reach - 2; y--) {
+                    BlockState st = level.getBlockState(p.set(x, y, z));
+                    if (!st.getFluidState().isEmpty()) {
+                        break; // water or lava: not ours to fill
+                    }
+                    if (st.isAir() || st.canBeReplaced()) {
+                        continue;
+                    }
+                    if (isTerrain(st) && !st.is(Blocks.DIRT_PATH)) {
+                        top = y;
+                    }
+                    break; // ground, or something built: either way the scan stops here
+                }
+                if (top == Integer.MIN_VALUE || top >= target) {
+                    continue;
+                }
+                BlockState cap = level.getBlockState(p.set(x, top, z));
+                BlockState fill = cap.is(BlockTags.SAND) || cap.is(Blocks.GRAVEL) ? cap : Blocks.DIRT.defaultBlockState();
+                if (cap.is(Blocks.GRASS_BLOCK) || cap.is(Blocks.PODZOL) || cap.is(Blocks.MYCELIUM)) {
+                    set(new BlockPos(x, top, z), Blocks.DIRT.defaultBlockState()); // buried now
+                }
+                for (int y = top + 1; y < target; y++) {
+                    set(new BlockPos(x, y, z), fill);
+                }
+                set(new BlockPos(x, target, z), cap);
+            }
+        }
     }
 
     /**
@@ -2086,11 +2146,17 @@ public final class HamletPiece {
         // chunk), so a lava lake from a chunk generated later can still spill into a finished one
         // (rig, 2026-10-31: a lake 51-58 blocks from the well after a fill with a one-chunk ring).
         // Generating two chunks past the disc first settles every feature that can reach it.
+        long chunkStart = System.nanoTime();
+        int chunks = 0;
         for (int x = (cx - r - 32) >> 4; x <= (cx + r + 32) >> 4; x++) {
             for (int z = (cz - r - 32) >> 4; z <= (cz + r + 32) >> 4; z++) {
                 level.getChunk(x, z);
+                chunks++;
             }
         }
+        // Build profile (the user, 2026-11-05: where does a hamlet's build time go?).
+        TerraTowns.LOGGER.info("[build-profile] lava pass at {},{} r={}: {} chunks loaded/generated in {} ms",
+                cx, cz, r, chunks, (System.nanoTime() - chunkStart) / 1_000_000L);
         int filled = 0;
         for (int dx = -r; dx <= r; dx++) {
             for (int dz = -r; dz <= r; dz++) {

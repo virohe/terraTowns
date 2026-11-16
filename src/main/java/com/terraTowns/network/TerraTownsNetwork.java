@@ -56,6 +56,9 @@ public final class TerraTownsNetwork {
                 TerraTownsNetwork::handleAddSection);
         registrar.playToServer(RemoveSectionPacket.TYPE, RemoveSectionPacket.STREAM_CODEC,
                 TerraTownsNetwork::handleRemoveSection);
+        registrar.playToServer(MerchantActionPacket.TYPE, MerchantActionPacket.STREAM_CODEC,
+                (payload, context) -> context.enqueueWork(
+                        () -> com.terraTowns.event.MerchantEvents.handleAction(payload, context)));
 
         // Server -> client (sync). Handlers live in a client-only class, reached via a lambda so
         // the class is not classloaded on a dedicated server.
@@ -74,6 +77,9 @@ public final class TerraTownsNetwork {
         registrar.playToClient(SyncJobBoardPacket.TYPE, SyncJobBoardPacket.STREAM_CODEC,
                 (payload, context) -> context.enqueueWork(
                         () -> com.terraTowns.client.ClientPacketHandlers.handleJobBoard(payload)));
+        registrar.playToClient(MerchantInfoPacket.TYPE, MerchantInfoPacket.STREAM_CODEC,
+                (payload, context) -> context.enqueueWork(
+                        () -> com.terraTowns.client.ClientPacketHandlers.handleMerchantInfo(payload)));
         registrar.playToClient(SyncSettlementMapPacket.TYPE, SyncSettlementMapPacket.STREAM_CODEC,
                 (payload, context) -> context.enqueueWork(
                         () -> com.terraTowns.client.ClientPacketHandlers.handleMap(payload)));

@@ -101,7 +101,12 @@ public final class BuildingRegistry {
         } else if (before != null && options.contains(before)) {
             chosen = before;
         } else {
-            chosen = options.get(0);
+            // A new plaque starts on what the building was detected as, so hanging one never
+            // changes anything until it's clicked (2026-11-05: buildings register by themselves,
+            // and a plaque is how a player disagrees). Until then it took the first type in
+            // enum order: a house with three beds came up as an Inn.
+            BuildingCategory detected = detectedType(settlement, room);
+            chosen = detected != null && options.contains(detected) ? detected : options.get(0);
         }
 
         if (chosen == null) {
@@ -110,6 +115,10 @@ public final class BuildingRegistry {
         } else {
             settlement.setPlaque(pos, chosen, BuildingSurvey.claimable(level, room), room.start(), room.box());
             plaque.show(chosen);
+            // Its beds and villagers count only on the settlement's ground.
+            if (settlement.growToInclude(room.box())) {
+                manager.setDirty();
+            }
         }
         if (chosen != before) {
             manager.setDirty();
@@ -118,6 +127,18 @@ public final class BuildingRegistry {
                     chosen == null ? "none" : chosen.id(), room.enclosed() ? "enclosed" : "open-air",
                     options.stream().map(BuildingCategory::id).toList());
         }
+    }
+
+    /** What the structure this plaque's room is in was detected as, if any. */
+    @Nullable
+    private static BuildingCategory detectedType(SettlementData settlement, BuildingSurvey.Result room) {
+        for (SettlementData.Structure st : settlement.structures()) {
+            if (st.type() != null && (st.box().isInside(room.start())
+                    || (st.start() != null && room.space().contains(st.start())))) {
+                return st.type();
+            }
+        }
+        return null;
     }
 
     /**

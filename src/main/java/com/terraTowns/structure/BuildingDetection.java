@@ -100,9 +100,12 @@ public final class BuildingDetection {
         return changed;
     }
 
-    /** Re-check every loaded structure now; @return true if anything changed. */
+    /**
+     * Re-check every loaded structure now, after looking for players' buildings nobody has
+     * registered yet ({@link PlayerBuildings#discover}); @return true if anything changed.
+     */
     public static boolean refreshAll(ServerLevel level, SettlementData settlement) {
-        boolean changed = false;
+        boolean changed = PlayerBuildings.discover(level, settlement);
         for (Structure st : settlement.structures()) {
             changed |= classify(level, settlement, st);
         }
@@ -111,6 +114,9 @@ public final class BuildingDetection {
 
     /** Look at what {@code st} holds now; @return true if its record changed. */
     public static boolean classify(ServerLevel level, SettlementData settlement, Structure st) {
+        if (st.playerBuilt()) {
+            return classifyPlayerBuilt(level, settlement, st);
+        }
         BoundingBox b = st.box();
         if (!level.hasChunksAt(b.minX(), b.minZ(), b.maxX(), b.maxZ())) {
             return false;
@@ -177,6 +183,58 @@ public final class BuildingDetection {
             }
         }
         return st.update(type, beds, workstations, plaqued);
+    }
+
+    /**
+     * A player's building is its room, surveyed again each time (2026-11-05): its walls may have
+     * moved since, and a box scan of an outdoor survey would reach into the house next door. Typed
+     * as a generated building is: the first workstation type it qualifies for, else Housing
+     * for beds. An Inn is only ever a plaque's choice, since any house with three beds qualifies.
+     */
+    private static boolean classifyPlayerBuilt(ServerLevel level, SettlementData settlement, Structure st) {
+        BoundingBox b = st.box();
+        if (!level.hasChunksAt(b.minX(), b.minZ(), b.maxX(), b.maxZ())) {
+            return false;
+        }
+        BuildingSurvey.Result room = st.start() != null ? BuildingSurvey.from(level, st.start()) : null;
+        if (room == null) {
+            // Its start was built over: survey again from whatever workstation or bed still stands.
+            for (BlockPos p : BlockPos.betweenClosed(b.minX(), b.minY(), b.minZ(), b.maxX(), b.maxY(), b.maxZ())) {
+                if (isBuildingBlock(level, level.getBlockState(p))) {
+                    room = BuildingSurvey.around(level, p.immutable());
+                    break;
+                }
+            }
+        }
+        if (room == null) {
+            return st.update(null, 0, List.of(), false);
+        }
+        BuildingCategory type = null;
+        for (BuildingCategory c : BuildingSurvey.qualifying(level, room)) {
+            if (c != BuildingCategory.INN_TAVERN && BuildingRegistry.tierAllows(settlement, c)) {
+                type = c;
+                break;
+            }
+        }
+        List<String> workstations = new ArrayList<>();
+        room.cells().values().forEach(s -> workstation(s).ifPresent(workstations::add));
+        boolean plaqued = false;
+        for (Long start : settlement.plaqueStarts()) {
+            if (room.space().contains(BlockPos.of(start))) {
+                plaqued = true;
+                break;
+            }
+        }
+        boolean moved = st.resurveyed(room.box(), room.start());
+        if (moved) {
+            settlement.growToInclude(st.box());
+        }
+        return st.update(type, room.beds().size(), workstations, plaqued) | moved;
+    }
+
+    /** A workstation, a bed, or any other block that can make a building (a chest, the desk). */
+    public static boolean isBuildingBlock(ServerLevel level, BlockState state) {
+        return state.is(BlockTags.BEDS) || blockTypes(level).containsKey(state.getBlock());
     }
 
     /** A generated crop farm or animal pen, by its template: "plains_small_farm_1", "plains_animal_pen_2". */

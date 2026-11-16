@@ -82,6 +82,7 @@ public final class SettlementTickEvents {
                 checkPromotionReadiness(server, level, manager, settlement);
             }
             GuardRecruitment.recruit(level, settlement);
+            com.terraTowns.merchant.Merchants.tick(level, settlement);
             refreshJobs(server, level, manager, settlement);
         }
     }

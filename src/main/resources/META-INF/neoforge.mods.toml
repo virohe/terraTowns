@@ -9,7 +9,7 @@ license="All Rights Reserved"
 
 [[mods]]
 modId="terra_towns"
-version="0.5.10"
+version="0.6.0"
 displayName="Cobblemon: Terra Towns"
 #updateJSONURL="https://change.me.example.invalid/updates.json"
 #displayURL="https://change.me.to.your.mods.homepage.example.invalid/"
@@ -58,6 +58,15 @@ config="terra_towns.mixins.json"
     type="required"
     mandatory=true
     versionRange="[1.8,)"
+    ordering="AFTER"
+    side="BOTH"
+
+# Oh The Biomes We've Gone (optional): Terra Towns replaces some of its village pens with versions
+# holding a manger (TT-218), so its data must load after BWG's for ours to win.
+[[dependencies.terra_towns]]
+    modId="biomeswevegone"
+    type="optional"
+    versionRange="*"
     ordering="AFTER"
     side="BOTH"
 

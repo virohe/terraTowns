@@ -227,6 +227,53 @@ public final class SettlementData {
     /** Record the area the settlement's structures cover; the margin is added here. */
     public void setFootprint(BoundingBox built) {
         this.footprint = built.inflatedBy(FOOTPRINT_MARGIN);
+        recentreIfOutside();
+    }
+
+    /** Put back a footprint exactly as it was (the harness, after growing it in a test). */
+    public void restoreFootprint(@Nullable BoundingBox exact) {
+        this.footprint = exact;
+    }
+
+    /**
+     * A building the player put up counts as the settlement's ground (2026-11-05). Villagers
+     * and beds are only counted on the footprint, and a hamlet's footprint was just the area it
+     * generated with, so a house built past its edge registered but its beds never counted.
+     * Only within the registration radius, the same reach a plaque has.
+     *
+     * @return true if the footprint grew
+     */
+    public boolean growToInclude(BoundingBox building) {
+        if (footprint == null) {
+            return false;
+        }
+        BlockPos mid = building.getCenter();
+        long dx = mid.getX() - center.getX();
+        long dz = mid.getZ() - center.getZ();
+        if (dx * dx + dz * dz > (long) registrationRadius * registrationRadius) {
+            return false;
+        }
+        BoundingBox grown = BoundingBox.encapsulatingBoxes(List.of(footprint, building.inflatedBy(FOOTPRINT_MARGIN)))
+                .orElse(footprint);
+        if (grown.equals(footprint)) {
+            return false;
+        }
+        footprint = grown;
+        return true;
+    }
+
+    /**
+     * A spawn hamlet's centre is the site the finder chose, but the hamlet is built round its well,
+     * which may land 20 or more blocks away (a dry column, off lava, the flattest patch). When it
+     * lands far enough, the centre falls outside the hamlet's own ground and every lookup by
+     * position (its merchants' and workers' settlement, building detection, the job scans) finds
+     * nothing there (harness, 2026-11-05: one hamlet in eight). Such a settlement moves its centre to
+     * its spawn point, the well; saved worlds are repaired as they load.
+     */
+    private void recentreIfOutside() {
+        if (footprint != null && spawnPoint != null && !covers(center) && covers(spawnPoint)) {
+            center = spawnPoint;
+        }
     }
 
     /** Is {@code pos} on this settlement's ground? Columns count whatever their height. */
@@ -343,12 +390,20 @@ public final class SettlementData {
         return n;
     }
 
-    /** Plaque buildings registered while the settlement was {@code tier} or higher. */
+    /**
+     * Buildings registered while the settlement was {@code tier} or higher: plaques, and
+     * player-built structures detected without one (a plaqued one is its plaque's building).
+     */
     public int buildingsRegisteredSince(SettlementTier tier) {
         int n = 0;
         for (Long pos : plaques.keySet()) {
             Integer at = plaqueTiers.get(pos);
             if (at != null && at >= tier.ordinal()) {
+                n++;
+            }
+        }
+        for (Structure st : structures) {
+            if (st.counts() && st.registeredTier() >= tier.ordinal()) {
                 n++;
             }
         }
@@ -376,6 +431,16 @@ public final class SettlementData {
     /** Where every plaque's survey started: a structure containing one is the plaque's building. */
     public java.util.Collection<Long> plaqueStarts() {
         return plaqueStarts.values();
+    }
+
+    /** Is {@code pos} inside a building a plaque has registered? */
+    public boolean inPlaqueBuilding(BlockPos pos) {
+        for (BoundingBox b : plaqueBoxes.values()) {
+            if (b != null && b.isInside(pos)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     @Nullable
@@ -618,6 +683,7 @@ public final class SettlementData {
         if (tag.contains("SpawnPoint")) {
             data.spawnPoint = BlockPos.of(tag.getLong("SpawnPoint"));
         }
+        data.recentreIfOutside();
         if (tag.contains("Banner")) {
             data.banner = ItemStack.parse(provider, tag.getCompound("Banner")).orElse(null);
         }
@@ -691,7 +757,13 @@ public final class SettlementData {
      * that counts.</p>
      */
     public static final class Structure {
-        private final BoundingBox box;
+        /** The template of a building a player put up, found by {@code PlayerBuildings}. */
+        public static final String PLAYER_BUILT = "terra_towns:player_built";
+        /** Final for a generated structure; a player's building follows its room as it changes. */
+        private BoundingBox box;
+        /** A player's building: the open cell its room survey starts from. */
+        @Nullable
+        private BlockPos start;
         private final String template;
         @Nullable
         private final BuildingCategory onlyAs;
@@ -703,11 +775,45 @@ public final class SettlementData {
         private boolean plaqued;
         /** A block inside changed since it was last classified (not saved). */
         private boolean dirty;
+        /**
+         * The tier the settlement was when a player's building was detected; -1 for a generated
+         * structure, which never counts as "new".
+         */
+        private int registeredTier = -1;
 
         public Structure(BoundingBox box, String template, @Nullable BuildingCategory onlyAs) {
             this.box = box;
             this.template = template;
             this.onlyAs = onlyAs;
+        }
+
+        /** A building a player put up, detected at tier {@code tier} (no plaque needed, 2026-11-05). */
+        public static Structure playerBuilt(BoundingBox box, BlockPos start, SettlementTier tier) {
+            Structure st = new Structure(box, PLAYER_BUILT, null);
+            st.start = start;
+            st.registeredTier = tier.ordinal();
+            return st;
+        }
+
+        public boolean playerBuilt() {
+            return PLAYER_BUILT.equals(template);
+        }
+
+        public int registeredTier() {
+            return registeredTier;
+        }
+
+        @Nullable
+        public BlockPos start() {
+            return start;
+        }
+
+        /** A player's building was surveyed again: its room, and where that survey started. */
+        public boolean resurveyed(BoundingBox box, BlockPos start) {
+            boolean changed = !box.equals(this.box) || !start.equals(this.start);
+            this.box = box;
+            this.start = start;
+            return changed;
         }
 
         public BoundingBox box() {
@@ -776,6 +882,12 @@ public final class SettlementData {
             CompoundTag tag = new CompoundTag();
             tag.putIntArray("Box", boxToInts(box));
             tag.putString("Template", template);
+            if (registeredTier >= 0) {
+                tag.putInt("Tier", registeredTier);
+            }
+            if (start != null) {
+                tag.putLong("Start", start.asLong());
+            }
             if (onlyAs != null) {
                 tag.putString("OnlyAs", onlyAs.id());
             }
@@ -800,6 +912,8 @@ public final class SettlementData {
             BuildingCategory onlyAs = tag.contains("OnlyAs") ? BuildingCategory.byId(tag.getString("OnlyAs"))
                     : tag.getBoolean("HousingOnly") ? BuildingCategory.HOUSING : null;
             Structure st = new Structure(boxFromInts(tag.getIntArray("Box")), tag.getString("Template"), onlyAs);
+            st.registeredTier = tag.contains("Tier") ? tag.getInt("Tier") : -1;
+            st.start = tag.contains("Start") ? BlockPos.of(tag.getLong("Start")) : null;
             if (tag.getBoolean("Classified")) {
                 List<String> ws = new ArrayList<>();
                 ListTag list = tag.getList("Workstations", Tag.TAG_STRING);

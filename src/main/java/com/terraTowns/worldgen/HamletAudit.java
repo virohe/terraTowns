@@ -145,6 +145,30 @@ public final class HamletAudit {
         }
         row.put("grade", p.grade());
         row.put("pouredAboveFloor", p.pouredAboveFloor());
+        // --- the bare-ground test (playtest, 2026-11-10) ---
+        // A template's bottom layer is ground (dirt) meant to sit level with the grass. A piece
+        // lifted to its door's level on a slope left that layer standing above the ground on the
+        // low side: a band of bare dirt under the walls, and lone dirt blocks where the layer
+        // reaches past them. Counted as dirt in the bottom layer with open air beside it.
+        int exposedDirt = 0;
+        BlockPos.MutableBlockPos nextToDirt = new BlockPos.MutableBlockPos();
+        for (int dx = 0; dx < p.sizeX(); dx++) {
+            for (int dz = 0; dz < p.sizeZ(); dz++) {
+                BlockPos at = new BlockPos(p.minX() + dx, p.baseY(), p.minZ() + dz);
+                if (!level.getBlockState(at).is(BlockTags.DIRT)) {
+                    continue;
+                }
+                for (net.minecraft.core.Direction d : net.minecraft.core.Direction.Plane.HORIZONTAL) {
+                    nextToDirt.setWithOffset(at, d);
+                    if (level.getBlockState(nextToDirt).getCollisionShape(level, nextToDirt).isEmpty()
+                            && level.getFluidState(nextToDirt).isEmpty()) {
+                        exposedDirt++;
+                        break;
+                    }
+                }
+            }
+        }
+        row.put("exposedBaseDirt", exposedDirt);
         if (p.approach() != null) {
             int approachGround = builder.measureGround(p.approach().getX(), p.approach().getZ());
             BlockState stepState = level.getBlockState(
@@ -357,6 +381,7 @@ public final class HamletAudit {
         s.put("inaccessibleEntrances", PIECES.stream()
                 .filter(r -> Boolean.TRUE.equals(r.get("inaccessible"))).count());
         s.put("foundationPouredAboveFloor", sumInt("pouredAboveFloor"));
+        s.put("exposedBaseDirt", sumInt("exposedBaseDirt"));
         s.put("worstBuried", maxInt("plannedBury"));
         s.put("worstAirGap", maxInt("worstAirGap"));
         s.put("piecesWithAirGap", countNonZero("airGapColumns"));

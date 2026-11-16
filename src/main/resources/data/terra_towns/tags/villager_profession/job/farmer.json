@@ -2,6 +2,7 @@
   "replace": false,
   "values": [
     "minecraft:farmer",
+    "terra_towns:rancher",
     {
       "id": "friendsandfoes:beekeeper",
       "required": false

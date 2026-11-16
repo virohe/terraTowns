@@ -124,7 +124,7 @@ typed by the workstation it holds; job categories are a separate grouping (0.5.5
 
 | Building | Made by |
 |---|---|
-| Farms | composter, beehive (beekeeper), manger (rancher, 0.5.6); a generated animal pen or farm, and a hamlet's farms and pens, by what they are |
+| Farms | composter, beehive (beekeeper), manger (rancher, TT-218); a generated animal pen or farm, and a hamlet's farms and pens, by what they are |
 | Smithy | smithing table, blast furnace, grindstone, fletching table, cauldron (leatherworker) |
 | Library | lectern, cartography table |
 | Temple | brewing stand |
@@ -223,13 +223,61 @@ make anything: it sells what the village's **workers** (every other trade) make.
   previous stock the players did not buy goes to the merchant (a farmer selling 8 bread who sold 2
   sends 6). The merchant holds up to 8x a worker's restock per worker and item (64 bread each from
   three farmers: 192).
-- **Revenue:** emeralds the merchant takes in collect in an "emeralds made" section of its trade
-  screen, and the owner moves them into their inventory.
+- **Revenue:** emeralds the merchant takes in collect as "emeralds made", shown in the top right
+  of its trade screen to the player with influence there, and taken at its counter.
+- **Levels** (user, 2026-11-05): like any villager's, from players' purchases, but no higher than
+  the settlement allows: Apprentice in a village, Expert in a town, Master in a city. A merchant
+  sells only goods of its level or below (a Novice merchant what Novice workers sell), takes in
+  nothing above its level (that stays with the worker), and has two slots for goods on sale per
+  level.
+- **The stall** (what's on sale, at what price, the emeralds) is managed only at the merchant's
+  counter. The trade screen is any villager's, with the emeralds count added.
+- **At its counter:** a merchant keeps near its counter all day, except at night and at the
+  afternoon gathering.
 - **Passive sales:** merchants also sell to the village's other villagers over time, so a stall
   always earns something; this uses up stock.
 - **Who trades with whom:** the player with influence over the settlement trades with every
   villager in it; anyone else trades only with its merchants.
 - **Workstation:** a custom block; until its model exists, the iron-stairs model.
+
+**As built (0.6, `merchant/Merchants`, `MerchantStock`, `MerchantPrice`).** Calls made where the
+design was silent or ambiguous, each in one place so it can change:
+
+- *Price rounding:* the rule as written (+10%, rounded up against the buyer) wins over the examples
+  that disagree with it: a top price of 5 gives 6 (the example said 7), and 50 items an emerald gives
+  45 (the example said 55, which would undercut the worker). `MerchantPrice.markedUp`.
+- *Who the owner is:* the settlement's owner (`SettlementData.ownerId`, the first player to beat
+  its gym), who is also the one player with influence there (user, 2026-11-05: only one player can
+  hold a settlement's influence; another who beats its gym gains none).
+- *Unheld settlements trade freely* (`Merchants.canTrade`): applying "anyone else trades only with
+  its merchants" to a village whose gym nobody has beaten would leave a new player with no one to
+  trade with at all, since merchants only work in settlements someone holds.
+- *Restocks:* vanilla restocks only a villager someone bought from, so a worker that nobody traded
+  with hands over its whole stock once a day (`Merchants.dailyOverstock`), and vanilla's own
+  turn-of-day restock doesn't hand the same goods over twice (`MerchantHooks.beforeRestock`).
+- *What counts as a worker's goods:* an offer selling an item for emeralds alone (no book plus
+  emeralds), not Cobblemon's. A lot never exceeds a stack (an emerald for 16 eggs, not 45).
+- *The owner's own purchases* from their merchant take stock but make no emeralds (they'd come
+  straight back through "emeralds made": free goods).
+- *Slots:* each slot holds one of the merchant's goods (Selling) or nothing; goods in no slot are
+  Not Selling. New goods fill empty slots as they arrive, so a fresh stall sells something; goods
+  the owner took out of a slot stay out of empty slots until the owner or the randomizer puts them
+  back. The randomizer fills empty slots with random goods in stock (Shift: every slot).
+- *The picker's filters* (user: "an option for both"): categories from item tags, or creative
+  tabs (`GoodsGroups`).
+- *An item's level* is the lowest level at which any profession sells it in the trade tables
+  (`ItemLevels`, from `VillagerTrades.TRADES`, which NeoForge merges other mods' professions into):
+  bread 1, pumpkin pie 2, cookies 3, golden carrots 5. Goods no table sells count as level 1.
+- *XP per purchase* is what vanilla's own sale trades give at the goods' level (2, 10, 20, 30,
+  30); the tier cap is vanilla's level-up check, capped through `VillagerMixin`.
+- *Staying near the counter:* within 6 blocks while working or idle; resting, meeting at the bell,
+  panicking and hiding are left to vanilla (`Merchants.keepNear`, every settlement scan).
+- *Passive sales:* a chance every 2 minutes, certain with 10 or more other villagers, caught up for
+  a day; one lot at its price each.
+- *Merchant recruitment* works like the Guard's: counters are handed to unemployed residents of
+  village-tier settlements (`GuardRecruitment.handOut`); the counter isn't an acquirable job site.
+- The town checklist's "Pokémart merchant" stays out: that is the Pokémart's villager, still to come.
+- No profession texture yet (a blank overlay, as the gym leader's).
 
 ---
 
@@ -285,7 +333,11 @@ a single place.
    employed and jobless every scan (vanilla re-claims a workstation within seconds) and breaks
    trade restocking, so vanilla professions are left alone and the settlement staffs roles from
    whoever already practises a matching trade.
-6. **Multiplayer — simultaneous gym challenges, shared building registration?**
+6. **Influence changing hands** (to do, user 2026-11-05). One player holds a settlement's
+   influence: the first to beat its gym (`GymChallengeEvents`, first win only). A visitor can
+   challenge the gym but gains nothing. There will be a way for influence to change hands; it is
+   still to be designed.
+7. **Multiplayer — simultaneous gym challenges, shared building registration?**
    Server-authoritative `SavedData` makes registration shared; concurrent-challenge and
    per-player vs. shimmer-shared influence semantics TBD.
 
@@ -300,7 +352,7 @@ a single place.
 | **0.3** | Town founding | Found a town from scratch (sparse/missing villages): all 6 categories + gym leader + housing/beds/farms; village→town upgrade flow. |
 | **0.4** | Job assignment | Villager job unlocks (Farmer, Smith, Guard, Merchant, Builder) after gym clear; rival NPC pool that scales across settlements. *(0.4.0: unlock + staffing rules — `SettlementJob`, `JobBoard`, `/terraTowns jobs`. 0.4.1: rival pool — `RivalPool`, `RivalPosting`, `RivalEntity`; one rival per player, rank scaling with influence breadth + defeat history. 0.4.4: placement rule rebuilt on vanilla's entrance geometry, vanilla well as the hamlet centre. 0.4.5: survival recipes for the desk / plaque / route marker; one plaque registers one building; vanilla creative-style desk UI with each job's workstations. 0.4.6: plaque = wall sign naming its building, workstation-based survey with claims; gym succession re-locks the desk; beaten rival stays away a day and each promotion needs a rival win at that tier; hamlets fell whole trees, path into the well plaza, and place lamps until no ground is dark. 0.4.7: one plaque per building (a building owns all its workstations); market stall / guard post and their jobs open at village tier; a registered gym is required for every promotion; walkways routed by A* around pieces; plot clearing can no longer touch placed pieces; 3-8 path-side lamps instead of full coverage; dedicated servers build starting hamlets one per tick. 0.4.8: one Gym Leader's Desk per settlement (a second is inert), the bound leader keeps its binding when the desk is moved and is handed the new desk first, a beaten leader is locked in like a traded villager (GymDesk); cramped sites rejected by the finder; tree clear fells modded growth (stems, petal blocks, fungi) and never cuts a giant partway; pens and farms level their interiors and bury at most 1; /terraTowns assign <player> <index>.)* |
 | **0.5** | Villages | Generated villages join the system: every village (vanilla's five styles and BWG's six) generates exactly one gym, injected into its houses pool with a Lithostitched forced count so it sits on the streets; the gym brings its desk and the village spawns its leader; the village registers as an unowned village-tier settlement, and the first player to beat its gym holds its influence. Pok&eacute;centers capped at one per village. *(0.5.0: placeholder gym, `VillageRegistry`, `VillageAudit`. 0.5.5: job groups Farmer/Smith/Artisan/Builder/Guard/Merchant, other mods' professions by tag or guess (`ProfessionJobs`), Jobs tab rows with counts and breakdown. 0.5.4: map zoom, pan and click-for-details; building types by workstation (Fishery, Workshop, Butcher's Shop, Loom Shed, Storage Center, Market Counter); farms and pens counted; detection on block change. 0.5.3: the desk's settlement map (tier-titled; No outline / Buildings with a type legend / Sections), Progress tab; released with 0.5.2. 0.5.2: generated buildings detected (by workstation; beds only = Housing), Housing/Library/Temple types, the new promotion ladder. 0.5.1: gym leaders are appointed, never recruited: right-click an unemployed villager holding a desk, or an unowned village spawns one; no villager can claim a desk; leaders locked from appointment; the post falls vacant only on death; settlements have footprints, `GymDesk`.)* |
-| **0.6** | Merchants | The Merchant villager and the Market Stall (user's design, 2026-10-16; see §2.8): merchants sell what the village's workers trade, stocked from their overstock, at prices the owner sets; outsiders trade only with merchants. |
+| **0.6** | Merchants | The Merchant villager and the Market Stall (user's design, 2026-10-16; see §2.8): merchants sell what the village's workers trade, stocked from their overstock, at prices the owner sets; outsiders trade only with merchants. *(Built on `wip/merchants`, 2026-11-05: profession, recruitment, overstock, prices, trades, emeralds made, the stall screen, passive sales, the trade gate; unreleased.)* |
 | **0.7** | Story | The opening flow (user's design, 2026-10-02): the Professor at your hamlet's well sends you to the nearest village, gives you your starter there, and walks you through the gym, the desk and the town upgrade; the desk recipe stays locked until your continent's villages are connected. Dialogue screens first, camera scenes later. Also the load-time pass, once the 0.5 features are complete (user, 2026-10-12): the starting-hamlet site search and builds spread across ticks (TT-210; 44-55 s and 30-42 s per hamlet in the real pack). |
 | **0.8** | Train station | Stations only from the Professor (one per town promotion; Create's station recipe removed) and placeable only near a town (`CreateHook`). |
 | **1.0** | Release | Full hamlet→village→town loop; routes (foot path + markers → rail); biome-typed gyms; Cobblemon battle/heal/badge integration solid. |

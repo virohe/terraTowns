@@ -59,6 +59,10 @@ public final class PlayerEvents {
         SettlementData hamlet = manager.claimUnownedHamlet(player.getUUID(), random).orElse(null);
         if (hamlet != null) {
             hamlet.setName(playerName + "'s Hamlet");
+        } else if (manager.hamletTarget() > 0 && manager.hamletPlaced() == 0) {
+            // The world-start search found no site at all, even relaxed: searching again on every
+            // join would take just as long and find nothing (see WorldEvents).
+            return;
         } else {
             // Fallback: more players than pre-built hamlets — build a fresh one on demand.
             // CoastalSpawnFinder honours claim-clearance from existing settlements, so this
