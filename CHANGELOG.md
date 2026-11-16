@@ -5,6 +5,15 @@ Entries before 0.4.8 were reconstructed on 2026-09-27 from DESIGN.md and session
 project had no version control until then. Snapshots of 0.3.13 (partial) and 0.4.0+ are in
 `releases/terra-towns/`.
 
+## 0.5.9 — 2026-10-31
+- **No lava in hamlets**: a hamlet settling on its site now skips spots with surface lava within its
+  layout radius + 8, and any lava still at the surface inside the hamlet is filled (dirt, grass on top),
+  once before the layout and again after the build (felling trees can open a cave mouth). Lava lakes are
+  features, placed after the finder judged the site from noise heights; on the test seed 5 of 8 hamlets
+  had one in reach (playtest 2026-10-31: a hamlet built round a lava pool). The chunks two out from the
+  hamlet are generated first, so a lake from a neighbouring chunk can't spill in later.
+- Audit: `surfaceLava` (lava columns at the surface inside each hamlet) must be 0 (`check_harness.py`).
+
 ## 0.5.8 — 2026-10-30
 - **The loading screen shows the spawn-hamlet search** (the user, 2026-10-30: the screen sat at 100%
   with nothing moving while hamlets were found). With Terra Continental's loading map, each spot

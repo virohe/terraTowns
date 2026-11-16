@@ -211,6 +211,8 @@ public final class HamletAudit {
         row.put("droppedItems", level.getEntitiesOfClass(net.minecraft.world.entity.item.ItemEntity.class,
                 net.minecraft.world.phys.AABB.ofSize(net.minecraft.world.phys.Vec3.atCenterOf(center),
                         2.0 * buildRadius, 64, 2.0 * buildRadius)).size());
+        // Lava left at the surface inside the hamlet: a lava pool between the houses (2026-10-31).
+        row.put("surfaceLava", HamletPiece.surfaceLavaColumns(level, center, buildRadius));
         row.put("x", center.getX());
         row.put("y", center.getY());
         row.put("z", center.getZ());
@@ -363,6 +365,7 @@ public final class HamletAudit {
         s.put("doorsWrong", PIECES.stream()
                 .filter(r -> Boolean.FALSE.equals(r.get("doorOk"))).count());
         s.put("droppedItems", HAMLETS.stream().mapToInt(h -> (Integer) h.get("droppedItems")).sum());
+        s.put("surfaceLava", HAMLETS.stream().mapToInt(h -> (Integer) h.get("surfaceLava")).sum());
         s.put("approachesWithoutPath", PIECES.stream()
                 .filter(r -> Boolean.FALSE.equals(r.get("pathAtApproach"))).count());
         s.put("rejects", REJECTS);

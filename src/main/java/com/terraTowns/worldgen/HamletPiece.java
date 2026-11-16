@@ -11,6 +11,7 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.levelgen.structure.BoundingBox;
 import net.minecraft.tags.BlockTags;
+import net.minecraft.tags.FluidTags;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.Mob;
@@ -193,6 +194,8 @@ public final class HamletPiece {
      * after the fourth was rejected as overlapping, and it got 2 houses.
      */
     private static final int SETTLE_RADIUS = 40;
+    /** Clearance beyond the layout radius that {@link #settle} keeps from surface lava. */
+    private static final int LAVA_MARGIN = 8;
     private static final int SETTLE_STEP = 8;
     private static final int CAPACITY_STEP = 6;
     /** Patch half-size a buildable cell must be level across: about a small house. */
@@ -347,6 +350,8 @@ public final class HamletPiece {
         // centre actually fell on a below-sea-level crag, slide the whole hamlet to the nearest
         // dry, above-sea column so we never build the spawn (or houses) into water.
         BlockPos dry = settle(nearestDryColumn(origin.getX(), origin.getZ(), 20));
+        // Out to the audit's reach from wherever the well lands (up to WELL_SEARCH_RADIUS each way).
+        fillSurfaceLava(dry.getX(), dry.getZ(), PLOT_RADIUS + ROUTE_REACH + 2 * WELL_SEARCH_RADIUS);
 
         // 1. The well/spawn goes to the flattest, clearest small patch near the site centre.
         int wellX = dry.getX();
@@ -493,6 +498,9 @@ public final class HamletPiece {
         spawnAnimals(penSpots);
         TerraTowns.LOGGER.info("Placed spawn hamlet at {} ({} houses, {} farms, {} villagers, {} plots scored)",
                 hamletCenter, houses, placedFarms, villagers, candidates.size());
+        // Again, last: felling trees and cutting plots can open lava the first pass couldn't see
+        // (harness, 2026-10-31: lava sources in a cave mouth under a felled dark oak).
+        fillSurfaceLava(hamletCenter.getX(), hamletCenter.getZ(), PLOT_RADIUS + ROUTE_REACH);
         HamletAudit.hamlet(level, hamletCenter, PLOT_RADIUS + ROUTE_REACH, houses, placedFarms, villagers,
                 candidates.size(), lighting);
         return new Built(spawn, bounds(footprints, spawn), List.copyOf(houseBoxes), List.copyOf(farmBoxes));
@@ -1987,12 +1995,17 @@ public final class HamletPiece {
         int bestX = site.getX();
         int bestZ = site.getZ();
         int start = capacity(bestX, bestZ);
-        int best = start;
+        // A spot with surface lava in reach loses to any clean one, however roomy (playtest
+        // 2026-10-31: a hamlet settled round a lava pool with open land either side).
+        int best = lavaNear(bestX, bestZ) ? -1 : start;
         for (int[] o : offsets) {
             int x = site.getX() + o[0];
             int z = site.getZ() + o[1];
             if (groundTop(x, z) < level.getSeaLevel()) {
                 continue; // the centre itself must be dry land
+            }
+            if (lavaNear(x, z)) {
+                continue;
             }
             int c = capacity(x, z);
             if (c > best) {
@@ -2007,6 +2020,104 @@ public final class HamletPiece {
                     bestX, bestZ, start, best);
         }
         return new BlockPos(bestX, 0, bestZ);
+    }
+
+    /** Surface lava within the layout radius plus {@link #LAVA_MARGIN} of {@code cx, cz}, on a 4-block grid. */
+    private boolean lavaNear(int cx, int cz) {
+        int r = PLOT_RADIUS + LAVA_MARGIN;
+        for (int x = Math.floorDiv(cx - r, 4) * 4; x <= cx + r; x += 4) {
+            for (int z = Math.floorDiv(cz - r, 4) * 4; z <= cz + r; z += 4) {
+                int dx = x - cx;
+                int dz = z - cz;
+                int fx = x;
+                int fz = z;
+                if (dx * dx + dz * dz <= r * r
+                        && lavaCache.computeIfAbsent(columnKey(x, z), k -> surfaceLava(level, fx, fz))) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private final Map<Long, Boolean> lavaCache = new HashMap<>();
+
+    /**
+     * Lava at the top of a column: the first block below the sky that isn't air, a plant or a leaf.
+     * Lava lakes are features, placed after the finder judged the site from noise heights, so
+     * only the built chunks show them.
+     */
+    static boolean surfaceLava(ServerLevel level, int x, int z) {
+        level.getChunk(x >> 4, z >> 4);
+        BlockPos.MutableBlockPos p = new BlockPos.MutableBlockPos(
+                x, level.getHeight(Heightmap.Types.WORLD_SURFACE, x, z) - 1, z);
+        for (int i = 0; i < 48 && p.getY() > level.getMinBuildHeight(); i++, p.move(Direction.DOWN)) {
+            BlockState s = level.getBlockState(p);
+            if (s.getFluidState().is(FluidTags.LAVA)) {
+                return true;
+            }
+            if (!s.isAir() && !s.is(BlockTags.LEAVES) && !s.canBeReplaced()) {
+                return false;
+            }
+        }
+        return false;
+    }
+
+    /** Surface-lava columns within {@code r} of a hamlet centre (the audit's count). */
+    static int surfaceLavaColumns(ServerLevel level, BlockPos center, int r) {
+        int n = 0;
+        for (int dx = -r; dx <= r; dx++) {
+            for (int dz = -r; dz <= r; dz++) {
+                if (dx * dx + dz * dz <= r * r && surfaceLava(level, center.getX() + dx, center.getZ() + dz)) {
+                    n++;
+                }
+            }
+        }
+        return n;
+    }
+
+    /**
+     * Fill any lava still at the surface within {@code r} of the centre (when no clean spot was in
+     * {@link #settle}'s reach): every lava block in the column becomes dirt, the top one grass, so
+     * the ground under the plots is real and nothing near the spawn burns.
+     */
+    private void fillSurfaceLava(int cx, int cz, int r) {
+        // A chunk's features also write into its neighbours (a lake reaches ~24 blocks from its
+        // chunk), so a lava lake from a chunk generated later can still spill into a finished one
+        // (rig, 2026-10-31: a lake 51-58 blocks from the well after a fill with a one-chunk ring).
+        // Generating two chunks past the disc first settles every feature that can reach it.
+        for (int x = (cx - r - 32) >> 4; x <= (cx + r + 32) >> 4; x++) {
+            for (int z = (cz - r - 32) >> 4; z <= (cz + r + 32) >> 4; z++) {
+                level.getChunk(x, z);
+            }
+        }
+        int filled = 0;
+        for (int dx = -r; dx <= r; dx++) {
+            for (int dz = -r; dz <= r; dz++) {
+                int x = cx + dx;
+                int z = cz + dz;
+                if (dx * dx + dz * dz > r * r || !surfaceLava(level, x, z)) {
+                    continue;
+                }
+                BlockPos.MutableBlockPos p = new BlockPos.MutableBlockPos(
+                        x, level.getHeight(Heightmap.Types.WORLD_SURFACE, x, z) - 1, z);
+                while (!level.getBlockState(p).getFluidState().is(FluidTags.LAVA)) {
+                    p.move(Direction.DOWN);
+                }
+                boolean top = true;
+                while (level.getBlockState(p).getFluidState().is(FluidTags.LAVA) && p.getY() > level.getMinBuildHeight()) {
+                    set(p.immutable(), top ? Blocks.GRASS_BLOCK.defaultBlockState() : Blocks.DIRT.defaultBlockState());
+                    top = false;
+                    p.move(Direction.DOWN);
+                }
+                filled++;
+            }
+        }
+        if (filled > 0) {
+            TerraTowns.LOGGER.info("Hamlet at {},{}: filled {} columns of surface lava", cx, cz, filled);
+            groundCache.clear();
+            buildableCache.clear();
+        }
     }
 
     /** Buildable cells within the layout radius of {@code cx, cz}, on a world-aligned grid. */
